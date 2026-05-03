@@ -592,13 +592,7 @@ function planOneSite(site, workingCells, cfg) {
     }
     siteReg.bcch.push(bestBCCH);
 
-    // ── TCH 900 ─────────────────────────────────────────────────────────────
     const inSiteBCCHSet=new Set([...siteReg.bcch]);
-    const r900=planTCH(tch900Pool,scored,inSiteBCCHSet,siteReg.tch900,tch900Count);
-
-    // ── TCH 1800 ─────────────────────────────────────────────────────────────
-    // 1800 TCHs don't compete with 900 BCCHs (different band), but track intra-site separately
-    const r1800=planTCH(tch1800Pool,scored,new Set(),siteReg.tch1800,tch1800Count);
 
     const makeNb = (c, tier) => ({
       ...c, tier, isFirstTier: tier===1, hasBeamOverlap: true,
@@ -611,19 +605,58 @@ function planOneSite(site, workingCells, cfg) {
       ...tier3.map(c => makeNb(c, 3)).sort((a, b) => a.nbRelevance - b.nbRelevance),
     ].slice(0, cfg.maxNeighbours);
 
+    // TCH assigned via round-robin below — placeholders for now
     return {
       idx,az,trx900,trx1800,has900,has1800,tch900Count,tch1800Count,
       bcchBandName:bcchBand?.name||"—",
       bcch:bestBCCH, bcchMode,
-      tch900List:r900.list, tch900Mode:r900.mode,
-      tch1800List:r1800.list, tch1800Mode:r1800.mode,
+      tch900List:[], tch900Mode:'n/a',
+      tch1800List:[], tch1800Mode:'n/a',
       ncc:bestNCC,bcc:bestBCC,bsic:`${bestNCC}/${bestBCC}`,bsicDec:bestNCC*8+bestBCC,
       lac:siteLacRacBsc.lac,rac:siteLacRacBsc.rac,bsc:siteLacRacBsc.bsc,
       externalNeighbors,
       tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),
       allNbBCCHs:allNbBCCHs.sort((a,b)=>a-b),
       stats:{total:scored.length,tier1Count:tier1.length,tier2Count:tier2.length,tier3Count:tier3.length},
+      // private fields consumed by round-robin — deleted before returning
+      _scored:scored, _inSiteBCCHSet:inSiteBCCHSet,
+      _tch900Pool:tch900Pool, _tch1800Pool:tch1800Pool,
     };
+  });
+
+  // ── Round-robin TCH assignment ────────────────────────────────────────────
+  // Assign 1 TCH per sector per band per round so that each sector's Nth pick
+  // is informed by every other sector's (N-1) already-committed TCHs.
+  const MODE_RANK = {clean:0,'n/a':0,partial:1,site_adj:2,nb_reuse:3,nb_reuse_adj:4,reuse:5};
+  const worseMode = (a,b) => (MODE_RANK[a]??1) >= (MODE_RANK[b]??1) ? a : b;
+
+  const maxRounds = sectorResults.reduce((m,s) => Math.max(m, s.tch900Count, s.tch1800Count), 0);
+  const acc900  = sectorResults.map(() => ({list:[], mode:'clean'}));
+  const acc1800 = sectorResults.map(() => ({list:[], mode:'clean'}));
+
+  for (let round=0; round<maxRounds; round++) {
+    for (let i=0; i<sectorResults.length; i++) {
+      const s = sectorResults[i];
+      if (acc900[i].list.length < s.tch900Count) {
+        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1);
+        acc900[i].list.push(...list);
+        acc900[i].mode = worseMode(acc900[i].mode, mode);
+      }
+      if (acc1800[i].list.length < s.tch1800Count) {
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, new Set(), siteReg.tch1800, 1);
+        acc1800[i].list.push(...list);
+        acc1800[i].mode = worseMode(acc1800[i].mode, mode);
+      }
+    }
+  }
+
+  // Merge TCH back into results and drop private fields
+  sectorResults.forEach((s,i) => {
+    s.tch900List  = acc900[i].list.sort((a,b)=>a-b);
+    s.tch900Mode  = acc900[i].list.length < s.tch900Count ? 'partial' : acc900[i].mode;
+    s.tch1800List = acc1800[i].list.sort((a,b)=>a-b);
+    s.tch1800Mode = acc1800[i].list.length < s.tch1800Count ? 'partial' : acc1800[i].mode;
+    delete s._scored; delete s._inSiteBCCHSet; delete s._tch900Pool; delete s._tch1800Pool;
   });
 
   // Post-processing: if a sector ended up with 'clean' mode but one of its TCHs is
