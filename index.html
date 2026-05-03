@@ -428,7 +428,7 @@ function planOneSite(site, workingCells, cfg) {
     return majorityVote(pooled);
   })();
 
-  return sectors.map((sec,idx)=>{
+  const sectorResults = sectors.map((sec,idx)=>{
     const az=parseFloat(sec.azimuth)||0;
     const trx900=sec.trx900||0, trx1800=sec.trx1800||0;
     const has900=trx900>0, has1800=trx1800>0;
