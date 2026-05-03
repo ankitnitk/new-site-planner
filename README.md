@@ -32,9 +32,10 @@ A single-file browser-based tool for planning GSM (2G) radio frequencies, BSIC, 
 | NCC pool | 0-7 | Allowed NCC values (accepts ranges and lists, e.g. `2,4,6` or `0-7`) |
 | Max external neighbours | 10 | Maximum neighbours per sector in the export (intra-site always included) |
 | Planning passes | 3 | Number of multi-pass Jacobi iterations across all sites (see Technical Notes) |
-| Band 1 (GSM-900) BCCH pool | 562,563,610 | ARFCN pool for BCCH selection (comma/range format) |
-| Band 1 (GSM-900) TCH pool | 564-571,601-610 | ARFCN pool for TCH selection |
-| Band 2 (GSM-1800) TCH pool | — | 1800 band TCH pool (optional; used for dual-band cells) |
+| Band 1 (GSM-900) BCCH pool | 76-87 | ARFCN pool for BCCH selection — comma/range format, e.g. `76-87` or `78,80,86` |
+| Band 1 (GSM-900) TCH pool | 88-101, 123, 124 | ARFCN pool for TCH selection (same format) |
+| Band 2 (GSM-1800) BCCH pool | 562,563,610 | Used as BCCH source for 1800-only sectors (0 TRX on 900) |
+| Band 2 (GSM-1800) TCH pool | 564-571,601-610 | 1800-band TCH pool; also used for dual-band (900+1800) cells |
 
 ---
 
