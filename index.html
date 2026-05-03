@@ -1270,19 +1270,6 @@ function FreqPlanner() {
                             <td style={{padding:"4px 8px",color:"var(--color-text-info)"}}>{s.bsic}</td>
                           </tr>
                         ))}
-                        {/* Other planned sites */}
-                        {results.filter((_,i)=>i!==activeSite).flatMap(({site,sectorResults})=>
-                          sectorResults.map(s=>(
-                            <tr key={`${site.name}-${s.idx}`} style={{borderBottom:"0.5px solid var(--color-border-tertiary)",background:"var(--color-background-secondary)"}}>
-                              <td style={{padding:"4px 8px",fontWeight:"500",color:"var(--color-text-info)"}}>{site.name}_S{s.idx+1} ★</td>
-                              <td style={{padding:"4px 8px"}}>{s.az}° {dirLabel(s.az)}</td>
-                              <td style={{padding:"4px 8px",color:"var(--color-text-warning)"}}>{s.bcch}</td>
-                              <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch900List.join(" ")||"—"}</td>
-                              <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch1800List.join(" ")||"—"}</td>
-                              <td style={{padding:"4px 8px",color:"var(--color-text-info)"}}>{s.bsic}</td>
-                            </tr>
-                          ))
-                        )}
                       </tbody>
                     </table>
 
