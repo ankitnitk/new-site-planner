@@ -19,6 +19,8 @@
     onerror="document.getElementById('cdn-err').style.display='block'"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"
     onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     :root {
@@ -114,6 +116,8 @@
     }
     button.primary:hover { background: #0048CC; border-color: #0048CC; box-shadow: 0 4px 14px rgba(0,90,255,0.40); }
     strong { font-weight: 600; }
+    .lf-tip { font-size:11px; font-family: var(--font-mono); }
+    .leaflet-popup-content { font-family: var(--font-mono); margin: 10px 14px; }
     h2 { color: var(--color-text-primary); line-height: 1.4; font-weight: 600; }
     p { line-height: 1.6; }
     th { white-space: nowrap; }
@@ -944,6 +948,150 @@ function ModeBadge({mode}) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+// ── Map helpers ──────────────────────────────────────────────────────────────
+function destPoint(lat,lon,bearingDeg,distKm){
+  const R=6371,d=distKm/R,brng=bearingDeg*Math.PI/180;
+  const lat1=lat*Math.PI/180,lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(brng));
+  const lon2=lon1+Math.atan2(Math.sin(brng)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return [lat2*180/Math.PI,((lon2*180/Math.PI)+540)%360-180];
+}
+function sectorWedge(lat,lon,az,beamWidthDeg,radiusKm){
+  const half=beamWidthDeg/2,steps=18,pts=[[lat,lon]];
+  for(let i=0;i<=steps;i++) pts.push(destPoint(lat,lon,az-half+beamWidthDeg*i/steps,radiusKm));
+  return pts;
+}
+const MAP_PALETTE=['#e63946','#2196f3','#4caf50','#ff9800','#9c27b0','#00bcd4','#ff5722','#3f51b5','#8bc34a','#f06292','#009688','#ffc107','#673ab7','#795548'];
+function buildBcchColorMap(results){
+  const all=[...new Set(results.flatMap(({sectorResults})=>sectorResults.map(s=>s.bcch)))].filter(b=>b!=null).sort((a,b)=>a-b);
+  const m={};all.forEach((b,i)=>m[b]=MAP_PALETTE[i%MAP_PALETTE.length]);
+  return m;
+}
+
+// ── Map view component ────────────────────────────────────────────────────────
+function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,cfg,visible}){
+  const {useRef,useEffect}=React;
+  const divRef=useRef(null);
+  const mapRef=useRef(null);
+  const layers=useRef([]);
+
+  useEffect(()=>{
+    if(!divRef.current||!results||!results.length) return;
+
+    // Init Leaflet map once
+    if(!mapRef.current){
+      const lats=results.map(r=>parseFloat(r.site.lat)).filter(x=>!isNaN(x));
+      const lons=results.map(r=>parseFloat(r.site.lon)).filter(x=>!isNaN(x));
+      const clat=lats.reduce((a,b)=>a+b,0)/lats.length;
+      const clon=lons.reduce((a,b)=>a+b,0)/lons.length;
+      mapRef.current=L.map(divRef.current,{preferCanvas:true}).setView([clat,clon],12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',maxZoom:19
+      }).addTo(mapRef.current);
+    }
+
+    // Invalidate size after show (fixes blank tile issue)
+    mapRef.current.invalidateSize();
+
+    // Remove old layers
+    layers.current.forEach(l=>l.remove());
+    layers.current=[];
+
+    const M=mapRef.current;
+    const colorMap=buildBcchColorMap(results);
+    const bw=cfg.beamWidth||65;
+    // Sector radius: ~20% of 1st-tier radius, min 0.4 km
+    const rKm=Math.max(0.4,(cfg.firstTierRadius||5)*0.20);
+
+    const selSite=results[activeSite];
+    const selSec=selSite?.sectorResults?.[activeTab];
+    const selLat=parseFloat(selSite?.site?.lat);
+    const selLon=parseFloat(selSite?.site?.lon);
+
+    // Existing network cells — faint grey dots
+    cells.forEach(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return;
+      const mk=L.circleMarker([c.lat,c.lon],{radius:3,color:'#888',fillColor:'#bbb',fillOpacity:0.55,weight:0.5});
+      mk.bindTooltip(`${c.cellName||''} · BCCH ${c.bcch!=null?c.bcch:'—'}`,{sticky:true,className:'lf-tip'});
+      mk.addTo(M); layers.current.push(mk);
+    });
+
+    // Neighbour lines for selected sector
+    if(selSec&&!isNaN(selLat)&&!isNaN(selLon)){
+      selSec.externalNeighbors.forEach(nb=>{
+        if(isNaN(nb.lat)||isNaN(nb.lon)) return;
+        const t1=nb.tier===1;
+        const ln=L.polyline([[selLat,selLon],[nb.lat,nb.lon]],{
+          color:t1?'#ff6b00':'#1565c0',weight:t1?2.5:1.5,
+          dashArray:t1?null:'7,5',opacity:0.8
+        });
+        ln.bindTooltip(
+          `<b>${nb.cellName}</b> · T${nb.tier} · ${nb.dist!=null?nb.dist.toFixed(1):'?'} km<br/>BCCH ${nb.bcch!=null?nb.bcch:'—'} · BSIC ${nb.ncc!=null?`${nb.ncc}/${nb.bcc}`:'—'}`,
+          {sticky:true,className:'lf-tip'}
+        );
+        ln.addTo(M); layers.current.push(ln);
+      });
+    }
+
+    // Planned sector wedges
+    results.forEach(({site,sectorResults},si)=>{
+      const lat=parseFloat(site.lat),lon=parseFloat(site.lon);
+      if(isNaN(lat)||isNaN(lon)) return;
+      sectorResults.forEach((sec,ti)=>{
+        const sel=si===activeSite&&ti===activeTab;
+        const col=colorMap[sec.bcch]||'#888';
+        const wedge=sectorWedge(lat,lon,sec.az,bw,rKm);
+        const poly=L.polygon(wedge,{
+          color:sel?'#fff':col,fillColor:col,
+          fillOpacity:sel?0.9:0.55,weight:sel?2.5:1.5
+        });
+        poly.bindPopup(
+          `<div style="font-size:12px;line-height:1.6">
+            <b style="font-size:13px">${site.name} · S${sec.idx+1}</b><br/>
+            Az ${sec.az}° ${dirLabel(sec.az)}<br/>
+            BCCH <b>${sec.bcch!=null?sec.bcch:'—'}</b>
+            <span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:2px;margin-left:4px;vertical-align:middle"></span><br/>
+            TCH 900: ${sec.tch900List.length?sec.tch900List.join(', '):'—'}<br/>
+            TCH 1800: ${sec.tch1800List.length?sec.tch1800List.join(', '):'—'}<br/>
+            BSIC ${sec.bsic} (${sec.bsicDec})<br/>
+            T1/T2/T3: ${sec.stats.tier1Count} / ${sec.stats.tier2Count} / ${sec.stats.tier3Count}
+          </div>`,{maxWidth:220}
+        );
+        poly.on('click',()=>{setActiveSite(si);setActiveTab(ti);});
+        poly.addTo(M); layers.current.push(poly);
+      });
+      // Site label
+      const lbl=L.marker([lat,lon],{icon:L.divIcon({
+        html:`<div style="font-size:10px;font-weight:600;color:#111;background:rgba(255,255,255,0.85);padding:1px 4px;border-radius:3px;white-space:nowrap;border:0.5px solid #ccc">${site.name}</div>`,
+        iconAnchor:[0,-4],className:''
+      })});
+      lbl.addTo(M); layers.current.push(lbl);
+    });
+
+    // Fit bounds to planned sites on first render
+    const pts=results.map(r=>[parseFloat(r.site.lat),parseFloat(r.site.lon)]).filter(p=>!isNaN(p[0])&&!isNaN(p[1]));
+    if(pts.length>1) M.fitBounds(pts,{padding:[50,50]});
+    else if(pts.length===1) M.setView(pts[0],13);
+
+  },[results,activeSite,activeTab,visible,cfg]);
+
+  return (
+    <div>
+      <div ref={divRef} style={{height:'540px',width:'100%',borderRadius:'var(--border-radius-lg)',overflow:'hidden',border:'0.5px solid var(--color-border-tertiary)',background:'#e8e8e8'}}/>
+      <div style={{display:'flex',gap:'20px',flexWrap:'wrap',marginTop:'10px',fontSize:'11px',color:'var(--color-text-tertiary)',alignItems:'center'}}>
+        <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+          <span style={{display:'inline-block',width:'22px',height:'3px',background:'#ff6b00'}}/> T1 neighbour
+        </span>
+        <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+          <span style={{display:'inline-block',width:'22px',height:'0',borderTop:'2.5px dashed #1565c0'}}/> T2 neighbour
+        </span>
+        <span>Sector fill colour = BCCH (same colour = same BCCH)</span>
+        <span>Grey dots = existing network · Click a sector wedge for details</span>
+      </div>
+    </div>
+  );
+}
+
 function FreqPlanner() {
   const [step,setStep]=useState(1);
   const [gisData,setGisData]=useState(null);    const [gisMap,setGisMap]=useState({});
@@ -955,6 +1103,7 @@ function FreqPlanner() {
   const [results,setResults]=useState(null);
   const [activeSite,setActiveSite]=useState(0);
   const [activeTab,setActiveTab]=useState(0);
+  const [showMap,setShowMap]=useState(false);
   const [err,setErr]=useState("");
 
   const updBand=(i,k,v)=>setCfg(c=>({...c,bands:c.bands.map((b,j)=>j===i?{...b,[k]:v}:b)}));
@@ -1190,8 +1339,17 @@ function FreqPlanner() {
             <div style={{fontSize:"15px",fontWeight:"500"}}>{results.length} site{results.length>1?"s":""} planned</div>
             <div style={{marginLeft:"auto",display:"flex",gap:"8px"}}>
               <button onClick={()=>setStep(2)}>← Reconfigure</button>
+              <button onClick={()=>setShowMap(m=>!m)} style={{fontFamily:"var(--font-mono)",fontSize:"12px"}}>
+                {showMap?'📋 Details':'🗺 Map'}
+              </button>
               <button className="primary" onClick={()=>exportAll(results)}>Export XLSX ↗</button>
             </div>
+          </div>
+
+          {/* Map view */}
+          <div style={{display:showMap?'block':'none',marginBottom:'16px'}}>
+            <PlanMap results={results} cells={cells} activeSite={activeSite} setActiveSite={setActiveSite}
+              activeTab={activeTab} setActiveTab={setActiveTab} cfg={cfg} visible={showMap}/>
           </div>
 
           {/* Site selector */}
