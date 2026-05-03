@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -583,18 +583,51 @@ function planOneSite(site, workingCells, cfg) {
 }
 
 function planAllSites(sites,baseCells,cfg) {
-  let wc=[...baseCells];
-  return sites.map(site=>{
-    const lat=parseFloat(site.lat),lon=parseFloat(site.lon);
-    const sectorResults=planOneSite({lat,lon,sectors:site.sectors},wc,cfg);
-    // Inject planned cells as virtual neighbours for subsequent sites
-    sectorResults.forEach(r=>{
-      wc.push({cellName:`${site.name}_S${r.idx+1}`,siteName:site.name,lat,lon,azimuth:r.az,
-        bcch:r.bcch,tchList:[...r.tch900List,...r.tch1800List],ncc:r.ncc,bcc:r.bcc,
-        lac:r.lac,rac:r.rac,bsc:r.bsc,isPlanned:true});
-    });
-    return {site,sectorResults};
+  const maxPasses = Math.max(1, cfg.maxPasses ?? 3);
+
+  // Build a virtual-cell record from a sector result
+  const toVCell = (site, r) => ({
+    cellName:`${site.name}_S${r.idx+1}`, siteName:site.name,
+    lat:parseFloat(site.lat), lon:parseFloat(site.lon), azimuth:r.az,
+    bcch:r.bcch, tchList:[...r.tch900List,...r.tch1800List],
+    ncc:r.ncc, bcc:r.bcc, lac:r.lac, rac:r.rac, bsc:r.bsc, isPlanned:true
   });
+
+  // Pass 1: sequential greedy (same as before)
+  let lastResults = [];
+  {
+    let wc = [...baseCells];
+    lastResults = sites.map(site => {
+      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
+      sectorResults.forEach(r => wc.push(toVCell(site, r)));
+      return {site, sectorResults};
+    });
+  }
+
+  // Passes 2..N: Jacobi iteration — each site is re-planned using all OTHER sites'
+  // frequencies from the previous pass, so no site is permanently disadvantaged by
+  // planning order.
+  for (let pass = 2; pass <= maxPasses; pass++) {
+    // Build a lookup: siteName -> virtual cells from previous pass
+    const prevVCells = {};
+    lastResults.forEach(({site, sectorResults}) => {
+      prevVCells[site.name] = sectorResults.map(r => toVCell(site, r));
+    });
+
+    const nextResults = sites.map(site => {
+      // Working cells = base network + every OTHER site's cells from previous pass
+      const wc = [...baseCells];
+      sites.forEach(s => {
+        if (s.name !== site.name) (prevVCells[s.name] || []).forEach(vc => wc.push(vc));
+      });
+      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
+      return {site, sectorResults};
+    });
+
+    lastResults = nextResults;
+  }
+
+  return lastResults;
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -803,7 +836,7 @@ function FreqPlanner() {
   const [nsData,setNsData]=useState(null);       const [nsMap,setNsMap]=useState({});
   const [cells,setCells]=useState([]);
   const [plannedSites,setPlannedSites]=useState([]);
-  const [cfg,setCfg]=useState({firstTierRadius:5,searchRadius:10,beamWidth:65,nccStr:"0-7",maxNeighbours:10,bsicRadius:50,bands:DEFAULT_BANDS});
+  const [cfg,setCfg]=useState({firstTierRadius:5,searchRadius:10,beamWidth:65,nccStr:"0-7",maxNeighbours:10,bsicRadius:50,maxPasses:3,bands:DEFAULT_BANDS});
   const [results,setResults]=useState(null);
   const [activeSite,setActiveSite]=useState(0);
   const [activeTab,setActiveTab]=useState(0);
@@ -981,6 +1014,12 @@ function FreqPlanner() {
                   <input type="text" value={cfg.maxNeighbours}
                     onChange={e=>setCfg(c=>({...c,maxNeighbours:parseInt(e.target.value)||10}))} style={{...MONO,width:"100px"}}/>
                   <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Beyond 1st-tier, only cells with beam overlap are counted toward this limit</div>
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <div style={FN}>Planning passes (multi-pass refinement)</div>
+                  <input type="text" value={cfg.maxPasses}
+                    onChange={e=>setCfg(c=>({...c,maxPasses:Math.max(1,parseInt(e.target.value)||3)}))} style={{...MONO,width:"100px"}}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Pass 1 is sequential greedy; passes 2+ re-plan each site using all other sites' previous-pass frequencies. Higher = better quality, slower.</div>
                 </div>
               </div>
             </div>
