@@ -965,6 +965,7 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
   const divRef=useRef(null);
   const mapRef=useRef(null);
   const layers=useRef([]);
+  const initialFitDone=useRef(false);
 
   useEffect(()=>{
     if(!divRef.current||!results||!results.length) return;
@@ -1124,10 +1125,22 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
       lbl.addTo(M); layers.current.push(lbl);
     });
 
-    // Fit bounds to planned sites on first render
-    const pts=results.map(r=>[parseFloat(r.site.lat),parseFloat(r.site.lon)]).filter(p=>!isNaN(p[0])&&!isNaN(p[1]));
-    if(pts.length>1) M.fitBounds(pts,{padding:[50,50]});
-    else if(pts.length===1) M.setView(pts[0],13);
+    // First open: fit all planned sites into view
+    if(!initialFitDone.current){
+      const pts=results.map(r=>[parseFloat(r.site.lat),parseFloat(r.site.lon)]).filter(p=>!isNaN(p[0])&&!isNaN(p[1]));
+      if(pts.length>1) M.fitBounds(pts,{padding:[50,50]});
+      else if(pts.length===1) M.setView(pts[0],13);
+      initialFitDone.current=true;
+    } else {
+      // Sector selected: zoom to selected site + its neighbour sites
+      const focusPts=[];
+      if(!isNaN(selLat)&&!isNaN(selLon)) focusPts.push([selLat,selLon]);
+      if(selSec) selSec.externalNeighbors.forEach(nb=>{
+        if(!isNaN(nb.lat)&&!isNaN(nb.lon)) focusPts.push([nb.lat,nb.lon]);
+      });
+      if(focusPts.length>1) M.fitBounds(focusPts,{padding:[60,60],maxZoom:14});
+      else if(focusPts.length===1) M.setView(focusPts[0],14);
+    }
 
   },[results,activeSite,activeTab,visible,cfg]);
 
