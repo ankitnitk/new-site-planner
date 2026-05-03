@@ -31,6 +31,7 @@ A single-file browser-based tool for planning GSM (2G) radio frequencies, BSIC, 
 | Beam width (°) | 65 | Half-power beam width used for overlap scoring |
 | NCC pool | 0-7 | Allowed NCC values (accepts ranges and lists, e.g. `2,4,6` or `0-7`) |
 | Max external neighbours | 10 | Maximum neighbours per sector in the export (intra-site always included) |
+| Planning passes | 3 | Number of multi-pass Jacobi iterations across all sites (see Technical Notes) |
 | Band 1 (GSM-900) BCCH pool | 562,563,610 | ARFCN pool for BCCH selection (comma/range format) |
 | Band 1 (GSM-900) TCH pool | 564-571,601-610 | ARFCN pool for TCH selection |
 | Band 2 (GSM-1800) TCH pool | — | 1800 band TCH pool (optional; used for dual-band cells) |
@@ -100,7 +101,7 @@ BSIC = NCC × 8 + BCC (6-bit value, range 0–63).
 
 ## TCH Planning
 
-TCH selection uses a **five-pass cascade**, also with randomised pool order per sector.
+TCH selection uses a **five-pass cascade** per sector. Each pass tries a progressively relaxed set of constraints:
 
 | Pass | Mode label | NB conflict | Intra-site BCCH adj | Intra-site TCH exact reuse | Intra-site TCH adj |
 |------|-----------|-------------|--------------------|--------------------------|--------------------|
@@ -114,7 +115,9 @@ TCH selection uses a **five-pass cascade**, also with randomised pool order per 
 
 **BCCH–TCH adjacency within a site:** the intra-site BCCH set used to filter TCH candidates is expanded to ±1, so no TCH of any sector at the same site can be adjacent to any BCCH of any other sector at that site.
 
-**Intra-site TCH spread:** the `spreadSelect` algorithm maximises the minimum frequency separation among selected TCHs, ensuring the widest possible spread within the available pool.
+**Round-robin assignment across sectors:** instead of assigning all TCHs to S1 then all to S2 then S3, the planner assigns one TCH per sector per band in rotation (S1 → S2 → S3 → S1 → S2 → S3 …). Each pick is made with full awareness of all other sectors' already-committed TCHs, preventing the first sector from occupying both ends of the pool and forcing later sectors into adjacent slots.
+
+**Optimal sibling-aware selection:** within each pass, the planner tries all valid combinations (up to a combinatorial limit) and picks the one that **maximises the minimum distance to any sibling sector's already-committed TCHs**. Tie-break: maximise internal spread. This clusters each sector's TCHs away from its siblings, minimising cross-sector adjacency.
 
 **Co-site existing sector awareness:** when planning a new sector on an already-existing site (detected by co-location within 0.05 km), the existing sectors' BCCHs and TCHs are pre-loaded into the intra-site register. The new sector therefore avoids conflicts and adjacency with them exactly as it would with other newly planned sectors of the same site.
 
@@ -180,5 +183,6 @@ Both sheets have **blue headers** (frozen below row 1) and **freeze panes** afte
 - **No server, no install** — pure client-side HTML/JS. Double-click to open in any browser.
 - **Dependencies loaded from CDN** (internet required on first load): React 18, Babel standalone, xlsx-js-style.
 - **Offline fallback:** download the four JS files and reference them locally — see the comment block in `<head>`.
-- **Randomisation:** NCC, BCC, BCCH tie-breaking, and TCH pool starting point are all randomised per sector to avoid systematic low-value bias across the plan.
-- **Sequential planning:** sites are planned in the order they appear in the new-sites file. Each planned site's frequencies are locked and treated as existing network before the next site is planned.
+- **Randomisation:** NCC, BCC, and BCCH tie-breaking are randomised per sector to avoid systematic low-value bias.
+- **Multi-pass Jacobi iteration:** sites are first planned sequentially (pass 1). In passes 2+, each site is re-planned using all *other* sites' frequencies from the previous pass as constraints — so no site is permanently disadvantaged by planning order. The best-scoring pass (fewest degraded BCCH sectors, then fewest T1 BCCH conflicts) is returned. Configurable via the `Planning passes` parameter (default 3).
+- **Badge accuracy:** after all sectors of a site are planned, a post-processing step upgrades any sector's TCH mode badge to `~ x-sector adj` if a sibling sector's TCH is adjacent (±1), regardless of which sector was planned first.
