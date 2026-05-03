@@ -590,6 +590,26 @@ function planOneSite(site, workingCells, cfg) {
       stats:{total:scored.length,tier1Count:tier1.length,tier2Count:tier2.length,tier3Count:tier3.length},
     };
   });
+
+  // Post-processing: if a sector ended up with 'clean' mode but one of its TCHs is
+  // adjacent (±1) to a sibling sector's TCH, upgrade its mode to 'site_adj' so the
+  // badge reflects the actual cross-sector adjacency regardless of planning order.
+  const CLEAN_MODES = new Set(['clean','partial','n/a']);
+  sectorResults.forEach((sec, i) => {
+    ['900','1800'].forEach(band => {
+      const modeKey = `tch${band}Mode`;
+      if (!CLEAN_MODES.has(sec[modeKey])) return;
+      const myTCH = sec[`tch${band}List`];
+      if (!myTCH || !myTCH.length) return;
+      const hasAdj = sectorResults.some((other, j) => {
+        if (j === i) return false;
+        return (other[`tch${band}List`] || []).some(t => myTCH.some(m => Math.abs(m - t) === 1));
+      });
+      if (hasAdj) sec[modeKey] = 'site_adj';
+    });
+  });
+
+  return sectorResults;
 }
 
 function planAllSites(sites,baseCells,cfg) {
