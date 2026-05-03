@@ -595,7 +595,6 @@ function planOneSite(site, workingCells, cfg) {
 function planAllSites(sites,baseCells,cfg) {
   const maxPasses = Math.max(1, cfg.maxPasses ?? 3);
 
-  // Build a virtual-cell record from a sector result
   const toVCell = (site, r) => ({
     cellName:`${site.name}_S${r.idx+1}`, siteName:site.name,
     lat:parseFloat(site.lat), lon:parseFloat(site.lon), azimuth:r.az,
@@ -603,7 +602,23 @@ function planAllSites(sites,baseCells,cfg) {
     ncc:r.ncc, bcc:r.bcc, lac:r.lac, rac:r.rac, bsc:r.bsc, isPlanned:true
   });
 
-  // Pass 1: sequential greedy (same as before)
+  // Score a full pass result: [degradedSectors, t1BcchConflicts] — lower is better.
+  // degraded = bcchMode !== 'clean'; t1Conflict = planned BCCH appears in its own tier1BCCHs.
+  const scorePass = results => {
+    let degraded = 0, conflicts = 0;
+    results.forEach(({sectorResults}) => {
+      sectorResults.forEach(r => {
+        if (r.bcchMode !== 'clean') degraded++;
+        if (r.tier1BCCHs && r.tier1BCCHs.includes(r.bcch)) conflicts++;
+      });
+    });
+    return [degraded, conflicts];
+  };
+
+  const isBetter = (scoreA, scoreB) =>
+    scoreA[0] < scoreB[0] || (scoreA[0] === scoreB[0] && scoreA[1] < scoreB[1]);
+
+  // Pass 1: sequential greedy
   let lastResults = [];
   {
     let wc = [...baseCells];
@@ -614,18 +629,18 @@ function planAllSites(sites,baseCells,cfg) {
     });
   }
 
-  // Passes 2..N: Jacobi iteration — each site is re-planned using all OTHER sites'
-  // frequencies from the previous pass, so no site is permanently disadvantaged by
-  // planning order.
+  let bestResults = lastResults;
+  let bestScore = scorePass(lastResults);
+
+  // Passes 2..N: Jacobi iteration — each site re-planned using all OTHER sites'
+  // frequencies from the previous pass. Keep the best-scoring pass, not just the last.
   for (let pass = 2; pass <= maxPasses; pass++) {
-    // Build a lookup: siteName -> virtual cells from previous pass
     const prevVCells = {};
     lastResults.forEach(({site, sectorResults}) => {
       prevVCells[site.name] = sectorResults.map(r => toVCell(site, r));
     });
 
     const nextResults = sites.map(site => {
-      // Working cells = base network + every OTHER site's cells from previous pass
       const wc = [...baseCells];
       sites.forEach(s => {
         if (s.name !== site.name) (prevVCells[s.name] || []).forEach(vc => wc.push(vc));
@@ -635,9 +650,11 @@ function planAllSites(sites,baseCells,cfg) {
     });
 
     lastResults = nextResults;
+    const s = scorePass(nextResults);
+    if (isBetter(s, bestScore)) { bestScore = s; bestResults = nextResults; }
   }
 
-  return lastResults;
+  return bestResults;
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
