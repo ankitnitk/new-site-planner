@@ -258,6 +258,41 @@ function buildPlannedSites(rows, m) {
   return [...siteMap.values()];
 }
 
+// ── Optimal TCH selection ─────────────────────────────────────────────────────
+// Tries all C(pool,count) combinations and picks the one that maximises the
+// minimum distance to any sibling-sector TCH already in siteRegTCH.
+// Tie-break: maximise internal spread (good for intra-sector ACI).
+// Falls back to spreadSelect when the combination space is too large.
+function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
+  const sorted = [...new Set(pool)].sort((a,b)=>a-b);
+  if (!sorted.length || !count) return [];
+
+  // Combinatorial size guard: C(n,k) — avoid n choose k > 60000
+  let cn=1; for(let i=0;i<count;i++) cn=cn*(sorted.length-i)/(i+1);
+  if (cn > 60000) return spreadSelect(pool, count, minSep);
+
+  let bestCombo=null, bestDist=-Infinity, bestSpread=-1;
+
+  function search(start, sel) {
+    if (sel.length === count) {
+      const dist = siteRegTCH.length === 0 ? Infinity
+        : Math.min(...sel.flatMap(s => siteRegTCH.map(r => Math.abs(s-r))));
+      const spread = sel[sel.length-1] - sel[0];
+      if (dist > bestDist || (dist === bestDist && spread > bestSpread)) {
+        bestDist=dist; bestSpread=spread; bestCombo=[...sel];
+      }
+      return;
+    }
+    if (sorted.length - start < count - sel.length) return; // prune
+    for (let i=start; i<sorted.length; i++) {
+      if (sel.length>0 && sorted[i]-sel[sel.length-1] < minSep) continue;
+      search(i+1, [...sel, sorted[i]]);
+    }
+  }
+  search(0, []);
+  return bestCombo ?? [];
+}
+
 // ── Spread selection ──────────────────────────────────────────────────────────
 function spreadSelect(pool, count, minSep=1) {
   // minSep=1 means no two selected freqs can be identical (normal)
@@ -320,17 +355,17 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count) {
   // poolE: last resort — only hard rule is no intra-site BCCH adjacency
   const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a));
 
-  list = spreadSelect(poolA, count, 2);
+  list = optimalTCHSelect(poolA, count, 2, siteRegTCH);
   if (list.length >= count) { mode="clean"; }
   else {
-    const listB = spreadSelect(poolB, count, 2);
+    const listB = optimalTCHSelect(poolB, count, 2, siteRegTCH);
     if (listB.length >= list.length) { list=listB; mode=listB.length>=count?"site_adj":"partial"; }
     if (list.length < count) {
-      const listC = spreadSelect(poolC, count, 2);
+      const listC = optimalTCHSelect(poolC, count, 2, siteRegTCH);
       if (listC.length > list.length) { list=listC; mode=listC.length>=count?"nb_reuse":"partial"; }
     }
     if (list.length < count) {
-      const listD = spreadSelect(poolD, count, 2);
+      const listD = optimalTCHSelect(poolD, count, 2, siteRegTCH);
       if (listD.length > list.length) { list=listD; mode=listD.length>=count?"nb_reuse_adj":"partial"; }
     }
     if (list.length < count) {
