@@ -48,8 +48,8 @@ Neighbours are classified by hop-count on the beam-overlap graph. All classifica
 | Tier | Condition |
 |------|-----------|
 | **Intra-site** | Other sectors of the same planned site (rank 0 in export) |
-| **T1** | Within `1st tier radius` AND has direct beam overlap with the source sector |
-| **T2** | Beyond `1st tier radius` but still has direct beam overlap with source sector, OR is a co-site sector of a T1 cell |
+| **T1** | Within `1st tier radius` AND has direct beam overlap with the source sector (after fine-tuning) |
+| **T2** | Beyond `1st tier radius` but still has direct beam overlap, OR co-site with a T1 cell |
 | **T3** | BFS one hop further — overlaps any T1/T2 cell, or is co-site with a T1/T2 cell |
 
 ### Direct beam overlap definition
@@ -62,13 +62,25 @@ A candidate cell qualifies as having direct beam overlap if **both**:
 
 **Intra-site bridge exception:** a candidate with strong revS (≥ 40%) toward the planned site can also qualify as T1/T2 if a *sibling sector* of the planned site has fwdS > 5% toward it — modelling the free intra-site handover hop.
 
+### Tier fine-tuning (applied after initial classification)
+
+Three post-processing stages refine the raw T1/T2 assignment:
+
+| Stage | Rule | Badge |
+|-------|------|-------|
+| **Demote** | Raw T1 with one side ≤ 5% AND stronger side < 45% → T2 | `T2↓` |
+| **Upgrade** | Raw T2 with both fwdS > 60% AND revS > 60% → T1 | `T1↑` |
+| **Shadow check** | Raw T1 candidate C is demoted if a closer confirmed-T1 cell B already covers C's direction, meaning C is not in the true first reachable ring. Three shadow cases: (1) B's beam points toward C (`fwdS(B→C) > 40%`); (2) both are back-beam cells (fwdS ≈ 0) within `beamWidth/3` bearing; (3) both are front-facing within `beamWidth/3` bearing — closer one wins | `T2~` |
+
+Co-site cells of the same neighbour site are never shadowed against each other.
+
 ### Neighbour ranking (within each tier)
 
 ```
 nbRelevance = distance / (1 + (fwdS + revS) × 3)
 ```
 
-Lower score = higher priority. Cells with zero overlap are never ranked above overlapping cells.
+Lower score = higher priority. Cells with **both** fwdS ≤ 5% and revS ≤ 5% are always ranked after cells with any meaningful overlap on at least one side. Within each overlap bucket, the relevance formula applies.
 
 ---
 
@@ -169,7 +181,7 @@ One row per neighbour pair (intra-site rank 0, external rank 1, 2, 3 …).
 | Source_Cell, Target_Cell | Neighbour pair |
 | Rank | 0 = intra-site; 1+ = external, ordered by relevance score |
 | Distance_km | Distance between sites |
-| Tier | `Intra-site`, `1st`, `2nd`, or `3rd` |
+| Tier | `Intra-site`, `1st`, `1st(upgraded)`, `2nd`, `2nd(downgraded)`, `2nd(shadowed)`, or `3rd` |
 | Fwd_Overlap_pct | Source beam overlap toward target (%) |
 | Rev_Overlap_pct | Target beam overlap back toward source (%) |
 | Source_BCCH, Neighbour_BCCH | BCCHs for conflict checking |

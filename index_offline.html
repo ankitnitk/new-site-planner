@@ -511,12 +511,73 @@ function planOneSite(site, workingCells, cfg) {
     });
     const tier2Names = new Set(tier2.map(c => c.cellName));
     const tier12SiteNames = new Set([...tier1SiteNames, ...tier2.map(c => c.siteName).filter(Boolean)]);
-    // T3: BFS hop from T1/T2
-    const tier3 = scored.filter(c => {
-      if (tier1Names.has(c.cellName) || tier2Names.has(c.cellName)) return false;
+    // ── Tier fine-tuning (3 stages) ──────────────────────────────────────────
+    // Stage 1 — Demote T1→T2: one side ≤ OVL AND stronger side < 45%
+    //           (weakly one-sided cells that slipped through bridge exception)
+    // Stage 2 — Upgrade T2→T1: BOTH fwdS AND revS > 60%, distance-independent
+    //           (strong bilateral overlap just beyond the distance cutoff)
+    // Stage 3 — Shadow check: T1 candidate C is demoted if a closer confirmed-T1
+    //           cell B already has beam overlap with C (P→B→C handover path exists,
+    //           so C is not truly in the first reachable ring from P)
+    const DEMOTE_MAX  = 0.45;
+    const UPGRADE_MIN = 0.60;
+    const SHADOW_OVL  = 0.40; // fwdS(B→C) must exceed this for B to shadow C
+
+    const demotedNames  = new Set(); // stage 1
+    const upgradedNames = new Set(); // stage 2
+    const shadowedNames = new Set(); // stage 3
+
+    // Stage 1
+    tier1.forEach(c => {
+      if ((c.fwdS <= OVL || c.revS <= OVL) && Math.max(c.fwdS, c.revS) < DEMOTE_MAX)
+        demotedNames.add(c.cellName);
+    });
+    // Stage 2
+    tier2.forEach(c => {
+      if (c.fwdS > UPGRADE_MIN && c.revS > UPGRADE_MIN)
+        upgradedNames.add(c.cellName);
+    });
+    // Stage 3 — process stage-1/2 adjusted T1 candidates nearest-first
+    const candidateT1 = [
+      ...tier1.filter(c => !demotedNames.has(c.cellName)),
+      ...tier2.filter(c =>  upgradedNames.has(c.cellName)),
+    ].sort((a,b) => a.dist - b.dist);
+    const confirmedT1 = [];
+    candidateT1.forEach(C => {
+      const blocked = confirmedT1.some(B => {
+        if (B.siteName && C.siteName && B.siteName === C.siteName) return false; // co-site: never shadow each other
+        if (angleDiff(B.bear, C.bear) > beamWidth) return false; // B and C in different directions from P — no shadow
+        // Case 1: B's beam points toward C — classic handover chain P→B→C
+        const {fwdS:fBC} = cellOverlap(B.lat,B.lon,B.azimuth||0, C.lat,C.lon,C.azimuth||0, beamWidth);
+        if (fBC > SHADOW_OVL) return true;
+        // Case 2: Both are back-beam cells (fwdS≈0, qualified via bridge exception only).
+        // Neither is directly faced by the planned sector — keep only the closer one as T1.
+        if (B.fwdS <= OVL && C.fwdS <= OVL && angleDiff(B.bear, C.bear) <= beamWidth/3) return true;
+        // Case 3: Both are front-facing (planned sector directly illuminates both) and in the same
+        // direction from P. The closer one is the true first-ring cell; the farther is second-hop.
+        if (B.fwdS > OVL && C.fwdS > OVL && angleDiff(B.bear, C.bear) <= beamWidth/3) return true;
+        return false;
+      });
+      if (blocked) shadowedNames.add(C.cellName);
+      else confirmedT1.push(C);
+    });
+
+    const effectiveTier1 = confirmedT1;
+    const effectiveTier2 = [
+      ...tier2.filter(c => !upgradedNames.has(c.cellName)),
+      ...tier1.filter(c => demotedNames.has(c.cellName) || shadowedNames.has(c.cellName)),
+      ...tier2.filter(c =>  upgradedNames.has(c.cellName) && shadowedNames.has(c.cellName)),
+    ];
+    const eff1Names = new Set(effectiveTier1.map(c => c.cellName));
+    const eff1SiteNames = new Set(effectiveTier1.map(c => c.siteName).filter(Boolean));
+    const eff2Names = new Set(effectiveTier2.map(c => c.cellName));
+    const eff12SiteNames = new Set([...eff1SiteNames, ...effectiveTier2.map(c => c.siteName).filter(Boolean)]);
+    // Rebuild T3 so no cell already in effective T1/T2 appears twice
+    const effectiveTier3 = scored.filter(c => {
+      if (eff1Names.has(c.cellName) || eff2Names.has(c.cellName)) return false;
       if (isNaN(c.lat) || isNaN(c.lon)) return false;
-      if (c.siteName && tier12SiteNames.has(c.siteName)) return true;
-      return [...tier1, ...tier2].some(t => {
+      if (c.siteName && eff12SiteNames.has(c.siteName)) return true;
+      return [...effectiveTier1, ...effectiveTier2].some(t => {
         if (isNaN(t.lat) || isNaN(t.lon)) return false;
         const {fwdS:f, revS:r} = cellOverlap(t.lat,t.lon,t.azimuth||0, c.lat,c.lon,c.azimuth||0, beamWidth);
         return Math.max(f, r) > OVL;
@@ -531,8 +592,8 @@ function planOneSite(site, workingCells, cfg) {
 
     const nb900 = scored.filter(c => c.bcch !== null && !isNaN(Number(c.bcch)) && bandSet900.has(Number(c.bcch)));
     const allNbBCCHs = [...new Set(nb900.map(c => Number(c.bcch)).filter(b => !isNaN(b)))];
-    const tier1BCCHs = new Set(tier1.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
-    const tier2BCCHs = new Set(tier2.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
+    const tier1BCCHs = new Set(effectiveTier1.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
+    const tier2BCCHs = new Set(effectiveTier2.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
     const inSiteAdj = new Set(); siteReg.bcch.forEach(b => { inSiteAdj.add(b-1); inSiteAdj.add(b); inSiteAdj.add(b+1); });
 
     // Build ordered BCCH candidates per beam-overlap pass (best separation first, random tiebreak)
@@ -590,13 +651,24 @@ function planOneSite(site, workingCells, cfg) {
 
     const makeNb = (c, tier) => ({
       ...c, tier, isFirstTier: tier===1, hasBeamOverlap: true,
+      tierLabel: upgradedNames.has(c.cellName) && !shadowedNames.has(c.cellName) ? '1st(upgraded)'
+               : shadowedNames.has(c.cellName) ? '2nd(shadowed)'
+               : demotedNames.has(c.cellName)  ? '2nd(downgraded)'
+               : tier===1 ? '1st' : tier===2 ? '2nd' : '3rd',
       nbRelevance: c.dist / (1 + (c.fwdS + c.revS) * 3),
     });
 
+    // Sort: cells with both overlaps ≈0 rank after any cell with meaningful overlap on at least one side.
+    // Within each bucket, lower nbRelevance = higher priority (proximity + overlap bonus).
+    const nbSort = (a, b) => {
+      const aZero = (a.fwdS <= OVL && a.revS <= OVL) ? 1 : 0;
+      const bZero = (b.fwdS <= OVL && b.revS <= OVL) ? 1 : 0;
+      return aZero - bZero || a.nbRelevance - b.nbRelevance;
+    };
     const externalNeighbors = [
-      ...tier1.map(c => makeNb(c, 1)).sort((a, b) => a.nbRelevance - b.nbRelevance),
-      ...tier2.map(c => makeNb(c, 2)).sort((a, b) => a.nbRelevance - b.nbRelevance),
-      ...tier3.map(c => makeNb(c, 3)).sort((a, b) => a.nbRelevance - b.nbRelevance),
+      ...effectiveTier1.map(c => makeNb(c, 1)).sort(nbSort),
+      ...effectiveTier2.map(c => makeNb(c, 2)).sort(nbSort),
+      ...effectiveTier3.map(c => makeNb(c, 3)).sort(nbSort),
     ].slice(0, cfg.maxNeighbours);
 
     // TCH assigned via round-robin below — placeholders for now
@@ -611,7 +683,8 @@ function planOneSite(site, workingCells, cfg) {
       externalNeighbors,
       tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),
       allNbBCCHs:allNbBCCHs.sort((a,b)=>a-b),
-      stats:{total:scored.length,tier1Count:tier1.length,tier2Count:tier2.length,tier3Count:tier3.length},
+      stats:{total:scored.length,tier1Count:effectiveTier1.length,tier2Count:effectiveTier2.length,tier3Count:effectiveTier3.length,
+             demotedCount:demotedNames.size,upgradedCount:upgradedNames.size,shadowedCount:shadowedNames.size},
       // private fields consumed by round-robin — deleted before returning
       _scored:scored, _inSiteBCCHSet:inSiteBCCHSet,
       _tch900Pool:tch900Pool, _tch1800Pool:tch1800Pool,
@@ -805,7 +878,7 @@ function exportAll(allResults) {
           Target_Cell: nb.cellName,
           Rank: i + 1,
           Distance_km: Number(nb.dist).toFixed(3),
-          Tier: nb.tier === 1 ? "1st" : nb.tier === 2 ? "2nd" : "3rd",
+          Tier: nb.tierLabel || (nb.tier===1?"1st":nb.tier===2?"2nd":"3rd"),
           Fwd_Overlap_pct: Math.round(nb.fwdS * 100),
           Rev_Overlap_pct: Math.round(nb.revS * 100),
           Source_BCCH: srcBCCH,
@@ -961,11 +1034,33 @@ function bcchToColor(bcch){
 
 // ── Map view component ────────────────────────────────────────────────────────
 function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,cfg,visible}){
-  const {useRef,useEffect}=React;
+  const {useRef,useEffect,useState,useMemo}=React;
   const divRef=useRef(null);
   const mapRef=useRef(null);
   const layers=useRef([]);
   const initialFitDone=useRef(false);
+  const [mapBW,setMapBW]=useState(30);
+  const [mapLenKm,setMapLenKm]=useState(null); // null = auto
+
+  // Auto length: 20% of minimum inter-site distance (planned↔neighbour and planned↔planned)
+  const autoLen=useMemo(()=>{
+    if(!results||!results.length) return 1.0;
+    let minDist=Infinity;
+    results.forEach(({sectorResults})=>{
+      sectorResults.forEach(sec=>{
+        sec.externalNeighbors.forEach(nb=>{ if(nb.dist>0.05) minDist=Math.min(minDist,nb.dist); });
+      });
+    });
+    for(let i=0;i<results.length;i++) for(let j=i+1;j<results.length;j++){
+      const lat1=parseFloat(results[i].site.lat),lon1=parseFloat(results[i].site.lon);
+      const lat2=parseFloat(results[j].site.lat),lon2=parseFloat(results[j].site.lon);
+      if(!isNaN(lat1)&&!isNaN(lon1)&&!isNaN(lat2)&&!isNaN(lon2)){
+        const d=haversineKm(lat1,lon1,lat2,lon2);
+        if(d>0.05) minDist=Math.min(minDist,d);
+      }
+    }
+    return minDist===Infinity?1.0:Math.max(0.2,minDist*0.20);
+  },[results]);
 
   useEffect(()=>{
     if(!divRef.current||!results||!results.length) return;
@@ -990,9 +1085,8 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
     layers.current=[];
 
     const M=mapRef.current;
-    const bw=cfg.beamWidth||65;
-    // Sector radius: ~20% of 1st-tier radius, min 0.4 km
-    const rKm=Math.max(0.4,(cfg.firstTierRadius||5)*0.20);
+    const bw=mapBW;
+    const rKm=mapLenKm!==null?mapLenKm:autoLen;
 
     const selSite=results[activeSite];
     const selSec=selSite?.sectorResults?.[activeTab];
@@ -1029,9 +1123,12 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
 
     // Neighbour site wedges — draw ALL sectors of each neighbour site
     if(selSec){
-      // Collect tier info per cell name for border colour
-      const nbTierMap={};
-      selSec.externalNeighbors.forEach(nb=>{ if(nb.cellName) nbTierMap[nb.cellName]=nb.tier; });
+      // Collect tier + tierLabel per cell name for border colour and tooltip
+      const nbTierMap={};    // cellName → tier number
+      const nbLabelMap={};   // cellName → tierLabel
+      selSec.externalNeighbors.forEach(nb=>{
+        if(nb.cellName){ nbTierMap[nb.cellName]=nb.tier; nbLabelMap[nb.cellName]=nb.tierLabel||String(nb.tier); }
+      });
 
       const drawnNbSites=new Set();
       selSec.externalNeighbors.forEach(nb=>{
@@ -1044,20 +1141,22 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
           : cells.filter(c=>c.cellName===nb.cellName&&!isNaN(c.lat)&&!isNaN(c.lon));
         // Also include the neighbour itself in case it's missing from cells list
         const toRender=siteCells.length?siteCells:[nb];
-        const tier=nb.tier;
-        const borderCol=tier===1?'#ff6b00':tier===2?'#1565c0':'#555';
 
         toRender.forEach(c=>{
           const az=parseFloat(c.azimuth)||0;
           const col=bcchToColor(c.bcch);
           const cellTier=nbTierMap[c.cellName];
+          const cellLabel=nbLabelMap[c.cellName];
+          // Per-cell border colour based on effective tier (T2~ is tier=2 → blue, not orange)
+          const cellBorderCol=cellTier===1?'#ff6b00':cellTier===2?'#1565c0':'#555';
           const wedge=sectorWedge(c.lat,c.lon,az,bw,rKm*0.85);
           const poly=L.polygon(wedge,{
-            color:cellTier?borderCol:'#555',
+            color:cellBorderCol,
             fillColor:col,fillOpacity:0.45,weight:1.5,dashArray:'5,3'
           });
+          const tierDisp=cellLabel?cellLabel.replace('1st','T1').replace('2nd','T2').replace('3rd','T3').replace('(upgraded)','↑').replace('(downgraded)','↓').replace('(shadowed)','~'):'';
           poly.bindTooltip(
-            `${c.cellName}${cellTier?' · T'+cellTier:''} · BCCH ${c.bcch!=null?c.bcch:'—'}`,
+            `${c.cellName}${tierDisp?' · '+tierDisp:''} · BCCH ${c.bcch!=null?c.bcch:'—'}`,
             {sticky:true,className:'lf-tip'}
           );
           poly.addTo(M); layers.current.push(poly);
@@ -1072,12 +1171,15 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
         nlbl.addTo(M); layers.current.push(nlbl);
       });
 
-      // Neighbour lines (drawn on top of wedges)
+      // Neighbour lines — tip of selected sector wedge → tip of neighbour sector wedge
       if(!isNaN(selLat)&&!isNaN(selLon)){
+        const srcTip=destPoint(selLat,selLon,selSec.az,rKm);
         selSec.externalNeighbors.forEach(nb=>{
           if(isNaN(nb.lat)||isNaN(nb.lon)) return;
+          const nbAz=parseFloat(nb.azimuth)||0;
+          const nbTip=destPoint(nb.lat,nb.lon,nbAz,rKm*0.85);
           const t1=nb.tier===1;
-          const ln=L.polyline([[selLat,selLon],[nb.lat,nb.lon]],{
+          const ln=L.polyline([srcTip,nbTip],{
             color:t1?'#ff6b00':'#1565c0',weight:t1?2.5:1.5,
             dashArray:t1?null:'7,5',opacity:0.8
           });
@@ -1142,10 +1244,35 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
       else if(focusPts.length===1) M.setView(focusPts[0],14);
     }
 
-  },[results,activeSite,activeTab,visible,cfg]);
+  },[results,activeSite,activeTab,visible,cfg,mapBW,mapLenKm,autoLen]);
 
   return (
     <div>
+      {/* Map display controls */}
+      <div style={{display:'flex',gap:'16px',alignItems:'center',flexWrap:'wrap',marginBottom:'8px',padding:'6px 10px',background:'var(--color-background-secondary)',borderRadius:'6px',border:'0.5px solid var(--color-border-tertiary)',fontSize:'12px'}}>
+        <label style={{display:'flex',alignItems:'center',gap:'6px',color:'var(--color-text-secondary)'}}>
+          Beam width
+          <input type="number" min="5" max="120" value={mapBW}
+            onChange={e=>setMapBW(Math.max(5,Math.min(120,+e.target.value||30)))}
+            style={{width:'52px',padding:'2px 5px',border:'0.5px solid var(--color-border-secondary)',borderRadius:'4px',fontSize:'12px',textAlign:'center'}}/>
+          °
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:'6px',color:'var(--color-text-secondary)'}}>
+          Wedge length
+          <input type="number" min="0.1" step="0.05"
+            value={mapLenKm!==null?mapLenKm:''}
+            placeholder={`${autoLen.toFixed(2)}`}
+            onChange={e=>setMapLenKm(e.target.value===''?null:Math.max(0.1,+e.target.value))}
+            style={{width:'70px',padding:'2px 5px',border:'0.5px solid var(--color-border-secondary)',borderRadius:'4px',fontSize:'12px',textAlign:'center'}}/>
+          km
+          {mapLenKm!==null&&
+            <button onClick={()=>setMapLenKm(null)}
+              style={{fontSize:'11px',padding:'1px 8px',cursor:'pointer',borderRadius:'4px',border:'0.5px solid var(--color-border-secondary)',background:'var(--color-background-primary)',color:'var(--color-text-secondary)'}}>
+              auto
+            </button>}
+        </label>
+        <span style={{color:'var(--color-text-tertiary)',fontSize:'11px'}}>auto = {autoLen.toFixed(2)} km</span>
+      </div>
       <div ref={divRef} style={{height:'540px',width:'100%',borderRadius:'var(--border-radius-lg)',overflow:'hidden',border:'0.5px solid var(--color-border-tertiary)',background:'#e8e8e8'}}/>
       <div style={{display:'flex',gap:'20px',flexWrap:'wrap',marginTop:'10px',fontSize:'11px',color:'var(--color-text-tertiary)',alignItems:'center'}}>
         <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
@@ -1569,11 +1696,14 @@ function FreqPlanner() {
                     </table>
 
                     <div style={{fontSize:"11px",fontWeight:"500",color:"var(--color-text-tertiary)",letterSpacing:"0.5px",marginBottom:"4px",textTransform:"uppercase"}}>
-                      External {sec.externalNeighbors.length} shown · T1: {sec.stats.tier1Count} · T2: {sec.stats.tier2Count} · {sec.stats.total} in search range
+                      External {sec.externalNeighbors.length} shown · T1: {sec.stats.tier1Count}{sec.stats.upgradedCount>0?` (${sec.stats.upgradedCount}↑)`:""} · T2: {sec.stats.tier2Count}{sec.stats.demotedCount>0||sec.stats.shadowedCount>0?` (${(sec.stats.demotedCount||0)+(sec.stats.shadowedCount||0)} adj)`:""} · {sec.stats.total} in search range
                     </div>
                     <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"8px",display:"flex",gap:"12px",flexWrap:"wrap"}}>
-                      <span><span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T1</span> Direct beam overlap with source — mandatory neighbours</span>
-                      <span><span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T2</span> Overlaps a T1 cell — one handover hop away</span>
+                      <span><span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T1</span> Direct beam overlap — mandatory neighbours</span>
+                      <span><span style={{background:"#e6f9ee",color:"#1a7f45",border:"0.5px solid #7ac599",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T1↑</span> Upgraded: both overlaps >60%</span>
+                      <span><span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T2</span> One handover hop away</span>
+                      <span><span style={{background:"#f0f4ff",color:"#6366f1",border:"0.5px solid #a5b4fc",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T2↓</span> Downgraded: one-sided overlap <45%</span>
+                      <span><span style={{background:"#fff8e1",color:"#b45309",border:"0.5px solid #f0b429",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T2~</span> Shadowed: closer T1 already covers this direction</span>
                     </div>
                     {sec.externalNeighbors.length===0
                       ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No external neighbours in range.</div>
@@ -1591,8 +1721,11 @@ function FreqPlanner() {
                                 <td style={{padding:"5px 8px"}}>
                                   <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
                                     <span style={{color:"var(--color-text-tertiary)",fontSize:"11px",minWidth:"14px"}}>{i+1}</span>
-                                    {nb.tier===1&&<span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T1</span>}
-                                    {nb.tier===2&&<span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T2</span>}
+                                    {nb.tier===1&&!nb.tierLabel?.includes('upgraded')&&<span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T1</span>}
+                                    {nb.tierLabel==='1st(upgraded)'&&<span title="Upgraded: strong bilateral overlap" style={{background:"#e6f9ee",color:"#1a7f45",border:"0.5px solid #7ac599",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T1↑</span>}
+                                    {nb.tier===2&&nb.tierLabel==='2nd'&&<span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T2</span>}
+                                    {nb.tierLabel==='2nd(downgraded)'&&<span title="Downgraded: one-sided overlap too weak" style={{background:"#f0f4ff",color:"#6366f1",border:"0.5px solid #a5b4fc",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T2↓</span>}
+                                    {nb.tierLabel==='2nd(shadowed)'&&<span title="Shadowed: a closer T1 cell already covers this direction" style={{background:"#fff8e1",color:"#b45309",border:"0.5px solid #f0b429",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T2~</span>}
                                   </div>
                                 </td>
                                 <td style={{padding:"5px 8px",fontWeight:"500",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:nb.isPlanned?"var(--color-text-info)":"var(--color-text-primary)"}}>{nb.cellName}{nb.isPlanned?" ★":""}</td>
@@ -1641,3 +1774,16 @@ function FreqPlanner() {
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
