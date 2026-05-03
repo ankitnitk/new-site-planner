@@ -952,10 +952,11 @@ function sectorWedge(lat,lon,az,beamWidthDeg,radiusKm){
   return pts;
 }
 const MAP_PALETTE=['#e63946','#2196f3','#4caf50','#ff9800','#9c27b0','#00bcd4','#ff5722','#3f51b5','#8bc34a','#f06292','#009688','#ffc107','#673ab7','#795548'];
-function buildBcchColorMap(results){
-  const all=[...new Set(results.flatMap(({sectorResults})=>sectorResults.map(s=>s.bcch)))].filter(b=>b!=null).sort((a,b)=>a-b);
-  const m={};all.forEach((b,i)=>m[b]=MAP_PALETTE[i%MAP_PALETTE.length]);
-  return m;
+// Deterministic colour: same BCCH always gets the same colour regardless of plan size
+function bcchToColor(bcch){
+  if(bcch==null) return '#888';
+  // multiply-hash so nearby ARFCNs get different palette slots
+  return MAP_PALETTE[(Math.abs(Number(bcch)*2654435761|0))%MAP_PALETTE.length];
 }
 
 // ── Map view component ────────────────────────────────────────────────────────
@@ -988,7 +989,6 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
     layers.current=[];
 
     const M=mapRef.current;
-    const colorMap=buildBcchColorMap(results);
     const bw=cfg.beamWidth||65;
     // Sector radius: ~20% of 1st-tier radius, min 0.4 km
     const rKm=Math.max(0.4,(cfg.firstTierRadius||5)*0.20);
@@ -998,29 +998,95 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
     const selLat=parseFloat(selSite?.site?.lat);
     const selLon=parseFloat(selSite?.site?.lon);
 
-    // Existing network cells — faint grey dots
+    // Build set of neighbour site names for the selected sector (all tiers)
+    const nbSiteNames=new Set();
+    const nbCellNames=new Set();
+    if(selSec){
+      selSec.externalNeighbors.forEach(nb=>{
+        if(nb.siteName) nbSiteNames.add(nb.siteName);
+        if(nb.cellName) nbCellNames.add(nb.cellName);
+      });
+    }
+
+    // Group existing cells by siteName for full-site wedge rendering
+    const cellsBySite={};
     cells.forEach(c=>{
       if(isNaN(c.lat)||isNaN(c.lon)) return;
-      const mk=L.circleMarker([c.lat,c.lon],{radius:3,color:'#888',fillColor:'#bbb',fillOpacity:0.55,weight:0.5});
-      mk.bindTooltip(`${c.cellName||''} · BCCH ${c.bcch!=null?c.bcch:'—'}`,{sticky:true,className:'lf-tip'});
+      const sn=c.siteName||c.cellName||'__nosite';
+      if(!cellsBySite[sn]) cellsBySite[sn]=[]; cellsBySite[sn].push(c);
+    });
+
+    // Background cells — grey dots for non-neighbour sites, wedges for neighbour sites
+    cells.forEach(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return;
+      const isNbSite=nbSiteNames.has(c.siteName)||nbCellNames.has(c.cellName);
+      if(isNbSite) return; // drawn separately as wedges below
+      const mk=L.circleMarker([c.lat,c.lon],{radius:3,color:'#888',fillColor:'#bbb',fillOpacity:0.45,weight:0.5});
+      mk.bindTooltip(`${c.cellName||''} · Az ${c.azimuth!=null?c.azimuth+'°':'—'} · BCCH ${c.bcch!=null?c.bcch:'—'}`,{sticky:true,className:'lf-tip'});
       mk.addTo(M); layers.current.push(mk);
     });
 
-    // Neighbour lines for selected sector
-    if(selSec&&!isNaN(selLat)&&!isNaN(selLon)){
+    // Neighbour site wedges — draw ALL sectors of each neighbour site
+    if(selSec){
+      // Collect tier info per cell name for border colour
+      const nbTierMap={};
+      selSec.externalNeighbors.forEach(nb=>{ if(nb.cellName) nbTierMap[nb.cellName]=nb.tier; });
+
+      const drawnNbSites=new Set();
       selSec.externalNeighbors.forEach(nb=>{
         if(isNaN(nb.lat)||isNaN(nb.lon)) return;
-        const t1=nb.tier===1;
-        const ln=L.polyline([[selLat,selLon],[nb.lat,nb.lon]],{
-          color:t1?'#ff6b00':'#1565c0',weight:t1?2.5:1.5,
-          dashArray:t1?null:'7,5',opacity:0.8
+        const sn=nb.siteName||nb.cellName;
+        if(drawnNbSites.has(sn)) return; drawnNbSites.add(sn);
+        // All cells at this site (same siteName)
+        const siteCells=nb.siteName
+          ? cells.filter(c=>c.siteName===nb.siteName&&!isNaN(c.lat)&&!isNaN(c.lon))
+          : cells.filter(c=>c.cellName===nb.cellName&&!isNaN(c.lat)&&!isNaN(c.lon));
+        // Also include the neighbour itself in case it's missing from cells list
+        const toRender=siteCells.length?siteCells:[nb];
+        const tier=nb.tier;
+        const borderCol=tier===1?'#ff6b00':tier===2?'#1565c0':'#555';
+
+        toRender.forEach(c=>{
+          const az=parseFloat(c.azimuth)||0;
+          const col=bcchToColor(c.bcch);
+          const cellTier=nbTierMap[c.cellName];
+          const wedge=sectorWedge(c.lat,c.lon,az,bw,rKm*0.85);
+          const poly=L.polygon(wedge,{
+            color:cellTier?borderCol:'#555',
+            fillColor:col,fillOpacity:0.45,weight:1.5,dashArray:'5,3'
+          });
+          poly.bindTooltip(
+            `${c.cellName}${cellTier?' · T'+cellTier:''} · BCCH ${c.bcch!=null?c.bcch:'—'}`,
+            {sticky:true,className:'lf-tip'}
+          );
+          poly.addTo(M); layers.current.push(poly);
         });
-        ln.bindTooltip(
-          `<b>${nb.cellName}</b> · T${nb.tier} · ${nb.dist!=null?nb.dist.toFixed(1):'?'} km<br/>BCCH ${nb.bcch!=null?nb.bcch:'—'} · BSIC ${nb.ncc!=null?`${nb.ncc}/${nb.bcc}`:'—'}`,
-          {sticky:true,className:'lf-tip'}
-        );
-        ln.addTo(M); layers.current.push(ln);
+
+        // Site label for neighbour site
+        const lpos=[nb.lat,nb.lon];
+        const nlbl=L.marker(lpos,{icon:L.divIcon({
+          html:`<div style="font-size:9px;color:#444;background:rgba(255,255,255,0.8);padding:1px 3px;border-radius:2px;white-space:nowrap;border:0.5px solid #aaa">${sn}</div>`,
+          iconAnchor:[0,-2],className:''
+        })});
+        nlbl.addTo(M); layers.current.push(nlbl);
       });
+
+      // Neighbour lines (drawn on top of wedges)
+      if(!isNaN(selLat)&&!isNaN(selLon)){
+        selSec.externalNeighbors.forEach(nb=>{
+          if(isNaN(nb.lat)||isNaN(nb.lon)) return;
+          const t1=nb.tier===1;
+          const ln=L.polyline([[selLat,selLon],[nb.lat,nb.lon]],{
+            color:t1?'#ff6b00':'#1565c0',weight:t1?2.5:1.5,
+            dashArray:t1?null:'7,5',opacity:0.8
+          });
+          ln.bindTooltip(
+            `<b>${nb.cellName}</b> · T${nb.tier} · ${nb.dist!=null?nb.dist.toFixed(1):'?'} km<br/>BCCH ${nb.bcch!=null?nb.bcch:'—'} · BSIC ${nb.ncc!=null?`${nb.ncc}/${nb.bcc}`:'—'}`,
+            {sticky:true,className:'lf-tip'}
+          );
+          ln.addTo(M); layers.current.push(ln);
+        });
+      }
     }
 
     // Planned sector wedges
@@ -1029,7 +1095,7 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
       if(isNaN(lat)||isNaN(lon)) return;
       sectorResults.forEach((sec,ti)=>{
         const sel=si===activeSite&&ti===activeTab;
-        const col=colorMap[sec.bcch]||'#888';
+        const col=bcchToColor(sec.bcch);
         const wedge=sectorWedge(lat,lon,sec.az,bw,rKm);
         const poly=L.polygon(wedge,{
           color:sel?'#fff':col,fillColor:col,
