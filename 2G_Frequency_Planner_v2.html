@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2G Frequency Planner</title>
+  <!-- CDN libraries — internet connection required on first load.
+       OFFLINE FALLBACK: download these files and place alongside this HTML:
+         react.development.js    → https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js
+         react-dom.development.js → https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js
+         babel.min.js            → https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js
+         xlsx.bundle.js          → https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js
+       Then replace each src= URL above with the local filename. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    :root {
+      /* Nokia brand palette */
+      --nokia-blue:       #005AFF;
+      --nokia-dark-blue:  #001E82;
+      --nokia-cyan:       #00B8F1;
+      --nokia-navy:       #00137F;
+      --nokia-light:      #E8F0FE;
+      /* Semantic */
+      --color-background-primary:   #ffffff;
+      --color-background-secondary: #F2F4F8;
+      --color-background-tertiary:  #F8F9FC;
+      --color-background-info:      #E8F0FE;
+      --color-background-success:   #E6F4EA;
+      --color-background-warning:   #FEF7E0;
+      --color-background-danger:    #FCE8E8;
+      --color-text-primary:   #0D1B2A;
+      --color-text-secondary: #4A5568;
+      --color-text-tertiary:  #8A96A8;
+      --color-text-info:      #001E82;
+      --color-text-success:   #1E6E34;
+      --color-text-warning:   #7A4F00;
+      --color-text-danger:    #9B2020;
+      --color-border-tertiary:  #E2E8F0;
+      --color-border-secondary: #C8D0DC;
+      --color-border-primary:   #A0AABC;
+      --color-border-info:      #7BA7F5;
+      --color-border-success:   #6AC47A;
+      --color-border-warning:   #F0B429;
+      --color-border-danger:    #F08080;
+      --border-radius-md: 6px;
+      --border-radius-lg: 10px;
+      --border-radius-xl: 14px;
+      --shadow-sm: 0 1px 3px rgba(0,30,130,0.08), 0 1px 2px rgba(0,30,130,0.04);
+      --shadow-md: 0 4px 12px rgba(0,30,130,0.10), 0 2px 4px rgba(0,30,130,0.06);
+      --font-mono: 'Courier New', 'Lucida Console', monospace;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: var(--font-sans); font-size: 14px;
+      color: var(--color-text-primary);
+      background: var(--color-background-secondary);
+      margin: 0; -webkit-font-smoothing: antialiased;
+    }
+    #cdn-err {
+      display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: #9B2020; color: white; text-align: center; padding: 14px 20px;
+      font-family: sans-serif; font-size: 14px; line-height: 1.5;
+    }
+    /* Top nav bar */
+    #nokia-header {
+      background: linear-gradient(135deg, var(--nokia-dark-blue) 0%, var(--nokia-navy) 60%, #001560 100%);
+      color: white; padding: 0 32px; display: flex; align-items: center;
+      justify-content: space-between; height: 56px;
+      box-shadow: 0 2px 8px rgba(0,20,100,0.35);
+    }
+    #nokia-header .brand { display: flex; align-items: center; gap: 16px; }
+    #nokia-header .nokia-wordmark {
+      font-size: 22px; font-weight: 700; letter-spacing: 4px;
+      color: white; text-transform: uppercase; line-height: 1;
+    }
+    #nokia-header .divider { width: 1px; height: 24px; background: rgba(255,255,255,0.25); }
+    #nokia-header .tool-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); letter-spacing: 0.3px; }
+    #nokia-header .author-tag { font-size: 11px; color: rgba(255,255,255,0.55); letter-spacing: 0.2px; }
+    /* Main content */
+    #root { max-width: 1240px; margin: 0 auto; padding: 28px 28px 64px; min-height: calc(100vh - 56px); }
+    input, select {
+      font-family: var(--font-sans); font-size: 13px; color: var(--color-text-primary);
+      background: white; border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md); padding: 7px 11px; outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus {
+      border-color: var(--nokia-blue);
+      box-shadow: 0 0 0 3px rgba(0,90,255,0.12);
+    }
+    button {
+      font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+      color: var(--color-text-secondary);
+      background: white; border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md); padding: 8px 18px; cursor: pointer;
+      transition: all 0.15s; box-shadow: var(--shadow-sm);
+    }
+    button:hover { background: var(--color-background-secondary); border-color: var(--color-border-primary); box-shadow: var(--shadow-md); }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+    /* Primary action button */
+    button.primary {
+      background: var(--nokia-blue); color: white;
+      border-color: var(--nokia-blue); box-shadow: 0 2px 8px rgba(0,90,255,0.30);
+    }
+    button.primary:hover { background: #0048CC; border-color: #0048CC; box-shadow: 0 4px 14px rgba(0,90,255,0.40); }
+    strong { font-weight: 600; }
+    h2 { color: var(--color-text-primary); line-height: 1.4; font-weight: 600; }
+    p { line-height: 1.6; }
+    th { white-space: nowrap; }
+    /* Page footer */
+    #page-footer {
+      text-align: center; padding: 20px; margin-top: 48px;
+      font-size: 11px; color: var(--color-text-tertiary);
+      border-top: 1px solid var(--color-border-tertiary);
+    }
+  </style>
+</head>
+<body>
+  <div id="cdn-err">
+    ⚠ One or more required libraries failed to load from CDN. Check your internet connection,
+    or download the JS files locally — see the comment in the &lt;head&gt; for instructions.
+  </div>
+  <div id="nokia-header">
+    <div class="brand">
+      <span class="tool-name">2G Frequency Planner</span>
+    </div>
+    <span class="author-tag">by Ankit Jain</span>
+  </div>
+  <div id="root"></div>
+  <div id="page-footer">
+    2G Frequency Planner &nbsp;·&nbsp; Author: <strong>Ankit Jain</strong>
+  </div>
+  <script type="text/babel">
+const { useState, useRef } = React;
+
+// ── Geo math ──────────────────────────────────────────────────────────────────
+const toRad = d => d * Math.PI / 180;
+const toDeg = r => r * 180 / Math.PI;
+const haversineKm = (a,b,c,d) => {
+  const R=6371,dLat=toRad(c-a),dLon=toRad(d-b);
+  const x=Math.sin(dLat/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+};
+const compassBearing = (la1,lo1,la2,lo2) => {
+  const dL=toRad(lo2-lo1),y=Math.sin(dL)*Math.cos(toRad(la2));
+  const x=Math.cos(toRad(la1))*Math.sin(toRad(la2))-Math.sin(toRad(la1))*Math.cos(toRad(la2))*Math.cos(dL);
+  return (toDeg(Math.atan2(y,x))+360)%360;
+};
+const angleDiff = (a,b) => Math.min(Math.abs(((a-b+180+360)%360)-180),180);
+const DIR=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const dirLabel = az => DIR[Math.round(az/22.5)%16];
+let _uid=0; const uid = ()=>++_uid;
+
+// ── File reading ──────────────────────────────────────────────────────────────
+const readBuf = file => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsArrayBuffer(file); });
+
+async function parseFile(file, preferredSheet) {
+  const buf = await readBuf(file);
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext==="csv"||ext==="txt") return parseCSVText(new TextDecoder().decode(buf));
+  const wb = XLSX.read(buf,{type:"array",cellDates:true});
+  const sn = pickSheet(wb.SheetNames,preferredSheet);
+  const json = XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:"",raw:false});
+  const headers = json.length?Object.keys(json[0]):[];
+  const rows = json.map(row=>{const o={};Object.entries(row).forEach(([k,v])=>{o[k]=String(v).trim();});return o;});
+  return {headers,rows,sheetName:sn,allSheets:wb.SheetNames};
+}
+
+function pickSheet(names,preferred) {
+  if (preferred) { const c=names.find(n=>n.toLowerCase()===preferred.toLowerCase()); if(c) return c; const p=names.find(n=>n.toLowerCase().includes(preferred.toLowerCase())); if(p) return p; }
+  const norm=s=>s.toLowerCase().replace(/\s/g,"");
+  return names.find(n=>norm(n)==="celldetails")||names.find(n=>norm(n).includes("cell")&&norm(n).includes("detail"))||names.find(n=>norm(n).includes("cell"))||names[0];
+}
+
+function parseCSVText(text) {
+  const clean=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").trim();
+  const first=clean.split("\n")[0];
+  const sep=first.split(";").length>first.split(",").length?";":",";
+  const split=line=>{ if(sep===";") return line.split(";").map(v=>v.trim().replace(/^"|"$/g,""));
+    const v=[]; let q=false,c=""; for(const ch of line){if(ch==='"'){q=!q;continue;}if(ch===","&&!q){v.push(c.trim());c="";continue;}c+=ch;} v.push(c.trim()); return v; };
+  const lines=clean.split("\n"); const headers=split(lines[0]);
+  const rows=lines.slice(1).filter(l=>l.trim()).map(l=>{const v=split(l);const o={};headers.forEach((h,i)=>{o[h]=(v[i]||"").trim();});return o;});
+  return {headers,rows,sheetName:null,allSheets:[]};
+}
+
+// ── Column detection ──────────────────────────────────────────────────────────
+const norm = s => s.toLowerCase().replace(/[\s_\-\.]/g,"");
+const findCol = (headers,pats) => { const h=headers.map(norm); for(const p of pats){const i=h.findIndex(x=>x.includes(norm(p)));if(i>=0)return headers[i];} return ""; };
+
+const detectGISCols = h => ({
+  siteName: findCol(h,["sitename","siteid","site_name","site","btsname"]),
+  cellName: findCol(h,["cellname","cellid","cell_name","cell","bscell","bts"]),
+  lat:      findCol(h,["lat","latitude","y_coord","ylat"]),
+  lon:      findCol(h,["lon","lng","longitude","x_coord","xlon"]),
+  azimuth:  findCol(h,["azimuth","bearing","direction","az","beam"]),
+});
+const detectParamCols = h => ({
+  cellName: findCol(h,["cellname","bscell","cell_name","cellid","cell","bts"]),
+  bcch:     findCol(h,["bcch","bccharfcn","bcch_arfcn","bcchan","arfcn"]),
+  tch:      findCol(h,["malist","ma_list","tchlist","frequencyhoppingarfcns","hopfreq","tchfreq","tch","freqlist"]),
+  ncc:      findCol(h,["ncc","networkcolour","networkcolor"]),
+  bcc:      findCol(h,["bcc","basecolour","basecolor"]),
+  bsic:     findCol(h,["bsic","basestationidentity"]),
+  lac:      findCol(h,["lac","locationareacode","location_area","locationarea"]),
+  rac:      findCol(h,["rac","routingareacode","routing_area","routingarea"]),
+  bsc:      findCol(h,["bsc","bscname","bsc_name","bscid","bsc_id","btscontroller"]),
+});
+const detectNewSitesCols = h => ({
+  siteName: findCol(h,["sitename","site_name","name","site"]),
+  siteId:   findCol(h,["siteid","site_id","id"]),
+  lat:      findCol(h,["lat","latitude","y_coord","ylat","y"]),
+  lon:      findCol(h,["lon","lng","longitude","x_coord","xlon","x"]),
+  azimuth:  findCol(h,["azimuth","bearing","az","direction"]),
+  trx900:   findCol(h,["trx900","trx_900","900trx","trx9","900"]),
+  trx1800:  findCol(h,["trx1800","trx_1800","1800trx","trx18","1800"]),
+});
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function shuffle(arr) {
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+
+// ── ARFCN pool helpers ────────────────────────────────────────────────────────
+function parseARFCNList(str) {
+  if (!str||!str.trim()) return [];
+  const result=new Set();
+  for(const tok of String(str).trim().split(/[\s,;]+/)){
+    const rng=tok.match(/^(\d+)\s*(?:-|\.\.)\s*(\d+)$/);
+    if(rng){const lo=Math.min(+rng[1],+rng[2]),hi=Math.max(+rng[1],+rng[2]);for(let a=lo;a<=hi;a++)result.add(a);}
+    else{const n=parseInt(tok,10);if(!isNaN(n))result.add(n);}
+  }
+  return [...result].sort((a,b)=>a-b);
+}
+function arfcnListToStr(arr) {
+  if(!arr.length) return ""; const p=[]; let lo=arr[0],hi=arr[0];
+  for(let i=1;i<=arr.length;i++){if(arr[i]===hi+1){hi=arr[i];continue;}p.push(lo===hi?`${lo}`:`${lo}-${hi}`);lo=hi=arr[i];}
+  return p.join(", ");
+}
+const getBcchPool = bd => parseARFCNList(bd?.bcchStr||"");
+const getTchPool  = bd => parseARFCNList(bd?.tchStr||"");
+
+// ── New sites CSV → planned sites ─────────────────────────────────────────────
+function buildPlannedSites(rows, m) {
+  const siteMap=new Map();
+  rows.forEach(row=>{
+    const name=(row[m.siteName]||"").trim(); if(!name) return;
+    const lat=parseFloat(row[m.lat]),lon=parseFloat(row[m.lon]);
+    if(isNaN(lat)||isNaN(lon)) return;
+    const az=parseFloat(row[m.azimuth])||0;
+    const trx900=parseInt(row[m.trx900])||0;
+    const trx1800=parseInt(row[m.trx1800])||0;
+    const siteId=(m.siteId&&row[m.siteId]?.trim())||name;
+    if(!siteMap.has(name)) siteMap.set(name,{id:uid(),name,siteId,lat,lon,sectors:[]});
+    siteMap.get(name).sectors.push({azimuth:az,trx900,trx1800});
+  });
+  return [...siteMap.values()];
+}
+
+// ── Spread selection ──────────────────────────────────────────────────────────
+function spreadSelect(pool, count, minSep=1) {
+  // minSep=1 means no two selected freqs can be identical (normal)
+  // minSep=2 means no two selected freqs can be adjacent (strict intra-sector rule)
+  if (!pool.length) return [];
+  const eligible = (a, sel) => !sel.includes(a) && sel.every(s => Math.abs(a-s) >= minSep);
+  const midStart = pool[Math.floor(pool.length/2)];
+  const firstEligible = pool.find(a => eligible(a, [])) ?? pool[0];
+  const sel = [firstEligible];
+  while (sel.length < count) {
+    let best=null, bd=-1;
+    for (const a of pool) {
+      if (!eligible(a, sel)) continue;
+      const d = Math.min(...sel.map(s=>Math.abs(a-s)));
+      if (d>bd) { bd=d; best=a; }
+    }
+    if (best!==null) sel.push(best); else break;
+  }
+  return sel.sort((a,b)=>a-b);
+}
+
+// ── TCH planner (shared for 900 and 1800) ────────────────────────────────────
+function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count) {
+  // siteRegTCH = TCHs already assigned to OTHER sectors of this site (not this sector)
+  if (!count || !tchPool.length) return {list:[], mode:"n/a"};
+  tchPool = shuffle(tchPool); // randomize starting point to avoid low-ARFCN bias
+  const tchPoolSet = new Set(tchPool);
+
+  // Expand inSiteBCCHSet to include ±1 — BCCH/TCH adjacency within same site must be avoided
+  const inSiteBCCHAdj = new Set(inSiteBCCHSet);
+  inSiteBCCHSet.forEach(b => { inSiteBCCHAdj.add(b-1); inSiteBCCHAdj.add(b+1); });
+
+  // Neighbour TCHs from external cells (same band)
+  const nbTCH = new Set();
+  scored.forEach(c=>(c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n))nbTCH.add(n);}));
+
+  // Hard forbidden: neighbour TCHs + in-site BCCHs (±1) + other-sector TCHs (no repetition)
+  const otherSectorTCH = new Set(siteRegTCH);
+  const hardForbid = new Set([...nbTCH, ...inSiteBCCHAdj, ...otherSectorTCH]);
+
+  // Soft forbidden: adjacent to OTHER sectors' TCHs (ok as last resort across sectors)
+  const otherSectorAdj = new Set();
+  siteRegTCH.forEach(t=>{ otherSectorAdj.add(t-1); otherSectorAdj.add(t+1); });
+
+  // Build candidate pools
+  const poolA = []; // ideal: clean from nb conflicts AND not adj to other-sector TCHs
+  const poolB = []; // relaxed: clean from nb conflicts, may be adj to other-sector TCHs
+  for (const a of tchPool) {
+    if (hardForbid.has(a)) continue;
+    if (!otherSectorAdj.has(a)) poolA.push(a);
+    poolB.push(a);
+  }
+
+  // intra-sector adjacency (minSep=2) is NEVER relaxed — adjacent freqs in same cell cause ACI
+  let list=[], mode="clean";
+  // poolC: nb conflict OK, but still avoids intra-site exact reuse AND intra-site adjacency
+  const poolC = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a) && !otherSectorAdj.has(a));
+  // poolD: nb conflict OK, intra-site adj OK, but no exact intra-site TCH reuse
+  const poolD = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
+  // poolE: last resort — only hard rule is no intra-site BCCH adjacency
+  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a));
+
+  list = spreadSelect(poolA, count, 2);
+  if (list.length >= count) { mode="clean"; }
+  else {
+    const listB = spreadSelect(poolB, count, 2);
+    if (listB.length >= list.length) { list=listB; mode=listB.length>=count?"site_adj":"partial"; }
+    if (list.length < count) {
+      const listC = spreadSelect(poolC, count, 2);
+      if (listC.length > list.length) { list=listC; mode=listC.length>=count?"nb_reuse":"partial"; }
+    }
+    if (list.length < count) {
+      const listD = spreadSelect(poolD, count, 2);
+      if (listD.length > list.length) { list=listD; mode=listD.length>=count?"nb_reuse_adj":"partial"; }
+    }
+    if (list.length < count) {
+      const listE = spreadSelect(poolE, count, 2);
+      if (listE.length > list.length) { list=listE; mode="reuse"; }
+    }
+  }
+
+  list.forEach(t=>siteRegTCH.push(t));
+  return {list, mode};
+}
+
+// ── Cell-to-cell beam overlap (used by BFS tier assignment) ──────────────────
+function cellOverlap(la1,lo1,az1,la2,lo2,az2,bw) {
+  const dist=haversineKm(la1,lo1,la2,lo2);
+  if(dist<0.05) return {fwdS:0,revS:0};
+  const bear=compassBearing(la1,lo1,la2,lo2);
+  return {
+    fwdS:Math.max(0,1-angleDiff(bear,az1)/bw),
+    revS:Math.max(0,1-angleDiff((bear+180)%360,az2)/bw)
+  };
+}
+
+// ── Planning engine ───────────────────────────────────────────────────────────
+function planOneSite(site, workingCells, cfg) {
+  const {lat,lon,sectors}=site;
+  const {firstTierRadius,nccStr,bands,beamWidth}=cfg;
+  const nccPool=parseARFCNList(nccStr||"0-7").filter(n=>n>=0&&n<=7);
+  const band900=bands[0], band1800=bands[1]; // first = 900 (BCCH+TCH), second = 1800 (TCH only for dual)
+  const allBand900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+  const allBand1800=new Set(band1800?[...getBcchPool(band1800),...getTchPool(band1800)]:[]);
+
+  // Intra-site register — pre-seeded with any EXISTING cells at the same physical location
+  // (dist < 0.05 km) so their BCCHs/TCHs are treated as already-used intra-site frequencies.
+  const siteReg={bcch:[],tch900:[],tch1800:[]};
+  workingCells.forEach(c=>{
+    if(isNaN(c.lat)||isNaN(c.lon)) return;
+    if(haversineKm(lat,lon,c.lat,c.lon)>=0.05) return;
+    const b=Number(c.bcch); if(!isNaN(b)) siteReg.bcch.push(b);
+    (c.tchList||[]).forEach(t=>{
+      const n=Number(t); if(isNaN(n)) return;
+      if(allBand1800.has(n)) siteReg.tch1800.push(n); else siteReg.tch900.push(n);
+    });
+  });
+
+  // ── Site-level LAC / RAC / BSC (same value applied to every sector) ─────────
+  const siteLacRacBsc = (() => {
+    const lrbKey = c => `${c.lac}|${c.rac}|${c.bsc}`;
+    const majorityVote = (cands) => {
+      if (!cands.length) return {lac:null, rac:null, bsc:null};
+      const tally = new Map();
+      cands.forEach(c => {
+        const k = lrbKey(c);
+        if (!tally.has(k)) tally.set(k, {count:0, dist:c.dist||0, c});
+        const v = tally.get(k); v.count++;
+        if ((c.dist||0) < v.dist) { v.dist = c.dist||0; v.c = c; }
+      });
+      const best = [...tally.values()].sort((a,b) => b.count - a.count || a.dist - b.dist)[0];
+      return {lac:best.c.lac, rac:best.c.rac, bsc:best.c.bsc};
+    };
+
+    // Case 1: existing sectors at same physical location → inherit their LAC/RAC/BSC
+    const coSite = workingCells.filter(c =>
+      !isNaN(c.lat) && !isNaN(c.lon) && haversineKm(lat,lon,c.lat,c.lon) < 0.05 &&
+      (c.lac != null || c.rac != null || c.bsc != null)
+    );
+    if (coSite.length) return majorityVote(coSite);
+
+    // Case 2: new site → pool T1 neighbours from ALL planned sectors combined
+    const OVL_LRB = 0.05;
+    const pooled = [];
+    sectors.forEach(sec => {
+      const az = parseFloat(sec.azimuth) || 0;
+      workingCells.forEach(c => {
+        if (isNaN(c.lat) || isNaN(c.lon)) return;
+        if (c.lac == null && c.rac == null && c.bsc == null) return;
+        const dist = haversineKm(lat, lon, c.lat, c.lon);
+        if (dist < 0.05 || dist > firstTierRadius) return;
+        const bear = compassBearing(lat, lon, c.lat, c.lon);
+        const fwdS = Math.max(0, 1 - angleDiff(bear, az) / beamWidth);
+        const revS = Math.max(0, 1 - angleDiff((bear+180)%360, c.azimuth||0) / beamWidth);
+        if (fwdS > OVL_LRB || revS > OVL_LRB) pooled.push({...c, dist});
+      });
+    });
+    return majorityVote(pooled);
+  })();
+
+  return sectors.map((sec,idx)=>{
+    const az=parseFloat(sec.azimuth)||0;
+    const trx900=sec.trx900||0, trx1800=sec.trx1800||0;
+    const has900=trx900>0, has1800=trx1800>0;
+    // BCCH band: 900 if present, else 1800
+    const bcchBand=has900?band900:band1800;
+    // TCH counts: subtract 1 BCCH TRX from whichever band carries the BCCH
+    const tch900Count=has900?Math.max(0,trx900-1):0;
+    const tch1800Count=has900?trx1800:Math.max(0,trx1800-1); // if 900-less, 1800 loses 1 for BCCH
+    const bcchPool=getBcchPool(bcchBand);
+    const tch900Pool=getTchPool(band900||{});
+    const tch1800Pool=band1800?getTchPool(band1800):[];
+    const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+
+    // Score neighbours
+    const scored=workingCells.map(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return null;
+      const dist=haversineKm(lat,lon,c.lat,c.lon);
+      if(dist>cfg.searchRadius||dist<0.05) return null;
+      const bear=compassBearing(lat,lon,c.lat,c.lon);
+      const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
+      const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
+      const overlap=fwdS*revS;
+      const relevance=dist/(1+overlap*3);
+      return {...c,dist,bear,fwdS,revS,overlap,relevance};
+    }).filter(Boolean).sort((a,b)=>a.relevance-b.relevance);
+
+    // ── Tier assignment (shared by BCCH planning and neighbour export) ──────
+    const OVL = 0.05;
+    const BRIDGE_REV = 0.40;
+    const hasDirectOverlap = c => {
+      if (c.revS <= OVL) return false;
+      if (c.fwdS > OVL) return true;
+      if (c.revS < BRIDGE_REV) return false;
+      return sectors.some((sec2, i2) => {
+        if (i2 === idx) return false;
+        const az2 = parseFloat(sec2.azimuth) || 0;
+        const fwdS2 = Math.max(0, 1 - angleDiff(c.bear, az2) / beamWidth);
+        return fwdS2 > OVL;
+      });
+    };
+    // T1: within firstTierRadius + direct beam overlap
+    const tier1 = scored.filter(c => c.dist <= firstTierRadius && hasDirectOverlap(c));
+    const tier1Names = new Set(tier1.map(c => c.cellName));
+    const tier1SiteNames = new Set(tier1.map(c => c.siteName).filter(Boolean));
+    // T2: beyond firstTierRadius but direct overlap, OR co-site with T1
+    const tier2 = scored.filter(c => {
+      if (tier1Names.has(c.cellName)) return false;
+      if (c.dist > firstTierRadius && hasDirectOverlap(c)) return true;
+      if (c.siteName && tier1SiteNames.has(c.siteName)) return true;
+      return false;
+    });
+    const tier2Names = new Set(tier2.map(c => c.cellName));
+    const tier12SiteNames = new Set([...tier1SiteNames, ...tier2.map(c => c.siteName).filter(Boolean)]);
+    // T3: BFS hop from T1/T2
+    const tier3 = scored.filter(c => {
+      if (tier1Names.has(c.cellName) || tier2Names.has(c.cellName)) return false;
+      if (isNaN(c.lat) || isNaN(c.lon)) return false;
+      if (c.siteName && tier12SiteNames.has(c.siteName)) return true;
+      return [...tier1, ...tier2].some(t => {
+        if (isNaN(t.lat) || isNaN(t.lon)) return false;
+        const {fwdS:f, revS:r} = cellOverlap(t.lat,t.lon,t.azimuth||0, c.lat,c.lon,c.azimuth||0, beamWidth);
+        return Math.max(f, r) > OVL;
+      });
+    });
+
+    // ── BCCH + BCC + NCC (joint selection) ──────────────────────────────────
+    // Goal: find (BCCH, NCC, BCC) triplet such that no cell within bsicRadius shares
+    // the same combination — i.e. unique BCCH+BSIC combo in that radius.
+    // BCCH preference order is governed by beam-overlap passes (T1/T2 avoidance);
+    // if no pair is found at full radius, shrink by 80% and retry all passes.
+
+    const nb900 = scored.filter(c => c.bcch !== null && !isNaN(Number(c.bcch)) && bandSet900.has(Number(c.bcch)));
+    const allNbBCCHs = [...new Set(nb900.map(c => Number(c.bcch)).filter(b => !isNaN(b)))];
+    const tier1BCCHs = new Set(tier1.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
+    const tier2BCCHs = new Set(tier2.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
+    const inSiteAdj = new Set(); siteReg.bcch.forEach(b => { inSiteAdj.add(b-1); inSiteAdj.add(b); inSiteAdj.add(b+1); });
+
+    // Build ordered BCCH candidates per beam-overlap pass (best separation first, random tiebreak)
+    const bcchCands = blocked => bcchPool
+      .filter(a => !blocked.has(a))
+      .map(a => ({ a, sep: allNbBCCHs.length ? Math.min(...allNbBCCHs.map(u => Math.abs(a - u))) : 9999 }))
+      .sort((x, y) => y.sep - x.sep || Math.random() - 0.5);
+    const passes = [
+      { mode:"clean",    cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs, ...tier2BCCHs])) },
+      { mode:"t2_reuse", cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs])) },
+      { mode:"t1_reuse", cands: bcchCands(inSiteAdj) },
+      { mode:"forced",   cands: bcchPool.map(a => ({ a, sep:0 })) },
+    ];
+
+    // Pre-compute distances once for all workingCells with valid BCCH+NCC+BCC
+    const bsicPool = workingCells
+      .filter(c => !isNaN(c.lat) && !isNaN(c.lon) &&
+                   !isNaN(Number(c.bcch)) && !isNaN(Number(c.ncc)) && !isNaN(Number(c.bcc)))
+      .map(c => ({ bcch: Number(c.bcch), ncc: Number(c.ncc), bcc: Number(c.bcc), d: haversineKm(lat, lon, c.lat, c.lon) }))
+      .filter(c => c.d >= 0.05);
+
+    let bestBCCH = null, bestNCC = null, bestBCC = null, bcchMode = "clean";
+    let bsicSearchR = cfg.bsicRadius ?? 50;
+    const nccOrd = shuffle(nccPool);
+    const bccOrd = shuffle([0,1,2,3,4,5,6,7]);
+
+    outer: while (bsicSearchR >= 1) {
+      // Build forbidden set: "${bcch}_${ncc}_${bcc}" keys taken within current radius
+      const forbidden = new Set();
+      bsicPool.filter(c => c.d <= bsicSearchR).forEach(c => forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
+      for (const pass of passes) {
+        for (const { a } of pass.cands) {
+          for (const n of nccOrd) {
+            for (const b of bccOrd) {
+              if (!forbidden.has(`${a}_${n}_${b}`)) {
+                bestBCCH = a; bestNCC = n; bestBCC = b; bcchMode = pass.mode; break outer;
+              }
+            }
+          }
+        }
+      }
+      bsicSearchR *= 0.8;
+    }
+    if (bestBCCH === null) { // absolute last resort — ignore all constraints
+      bcchMode = "forced";
+      bestBCCH = bcchPool.find(a => !siteReg.bcch.includes(a)) ?? bcchPool[0];
+      bestNCC = nccPool[0] ?? 0;
+      const cnt = Array(8).fill(0);
+      bsicPool.forEach(c => cnt[c.bcc]++);
+      bestBCC = cnt.indexOf(Math.min(...cnt));
+    }
+    siteReg.bcch.push(bestBCCH);
+
+    // ── TCH 900 ─────────────────────────────────────────────────────────────
+    const inSiteBCCHSet=new Set([...siteReg.bcch]);
+    const r900=planTCH(tch900Pool,scored,inSiteBCCHSet,siteReg.tch900,tch900Count);
+
+    // ── TCH 1800 ─────────────────────────────────────────────────────────────
+    // 1800 TCHs don't compete with 900 BCCHs (different band), but track intra-site separately
+    const r1800=planTCH(tch1800Pool,scored,new Set(),siteReg.tch1800,tch1800Count);
+
+    const makeNb = (c, tier) => ({
+      ...c, tier, isFirstTier: tier===1, hasBeamOverlap: true,
+      nbRelevance: c.dist / (1 + (c.fwdS + c.revS) * 3),
+    });
+
+    const externalNeighbors = [
+      ...tier1.map(c => makeNb(c, 1)).sort((a, b) => a.nbRelevance - b.nbRelevance),
+      ...tier2.map(c => makeNb(c, 2)).sort((a, b) => a.nbRelevance - b.nbRelevance),
+      ...tier3.map(c => makeNb(c, 3)).sort((a, b) => a.nbRelevance - b.nbRelevance),
+    ].slice(0, cfg.maxNeighbours);
+
+    return {
+      idx,az,trx900,trx1800,has900,has1800,tch900Count,tch1800Count,
+      bcchBandName:bcchBand?.name||"—",
+      bcch:bestBCCH, bcchMode,
+      tch900List:r900.list, tch900Mode:r900.mode,
+      tch1800List:r1800.list, tch1800Mode:r1800.mode,
+      ncc:bestNCC,bcc:bestBCC,bsic:`${bestNCC}/${bestBCC}`,bsicDec:bestNCC*8+bestBCC,
+      lac:siteLacRacBsc.lac,rac:siteLacRacBsc.rac,bsc:siteLacRacBsc.bsc,
+      externalNeighbors,
+      tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),
+      allNbBCCHs:allNbBCCHs.sort((a,b)=>a-b),
+      stats:{total:scored.length,tier1Count:tier1.length,tier2Count:tier2.length,tier3Count:tier3.length},
+    };
+  });
+}
+
+function planAllSites(sites,baseCells,cfg) {
+  let wc=[...baseCells];
+  return sites.map(site=>{
+    const lat=parseFloat(site.lat),lon=parseFloat(site.lon);
+    const sectorResults=planOneSite({lat,lon,sectors:site.sectors},wc,cfg);
+    // Inject planned cells as virtual neighbours for subsequent sites
+    sectorResults.forEach(r=>{
+      wc.push({cellName:`${site.name}_S${r.idx+1}`,siteName:site.name,lat,lon,azimuth:r.az,
+        bcch:r.bcch,tchList:[...r.tch900List,...r.tch1800List],ncc:r.ncc,bcc:r.bcc,
+        lac:r.lac,rac:r.rac,bsc:r.bsc,isPlanned:true});
+    });
+    return {site,sectorResults};
+  });
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportAll(allResults) {
+  // Sheet 1: Freq Plan
+  const freqRows = [];
+  allResults.forEach(({site, sectorResults}) => {
+    sectorResults.forEach(r => {
+      freqRows.push({
+        Site: site.name,
+        SiteID: site.siteId || "",
+        Cell: `${site.name}_S${r.idx+1}`,
+        Sector: `S${r.idx+1}`,
+        Azimuth: r.az,
+        TRX_900: r.trx900,
+        TRX_1800: r.trx1800,
+        BCCH_Band: r.bcchBandName,
+        BCCH: r.bcch,
+        BCCH_Sep: "",
+        BCCH_Mode: r.bcchMode,
+        TCH_900_Count: r.tch900Count,
+        TCH_900: r.tch900List.join(" "),
+        TCH_900_Mode: r.tch900Mode,
+        TCH_1800_Count: r.tch1800Count,
+        TCH_1800: r.tch1800List.join(" "),
+        TCH_1800_Mode: r.tch1800Mode,
+        NCC: r.ncc,
+        BCC: r.bcc,
+        BSIC: r.bsicDec,
+        LAC: r.lac ?? "",
+        RAC: r.rac ?? "",
+        BSC: r.bsc ?? "",
+      });
+    });
+  });
+
+  // Sheet 2: Neighbour Plan — one row per neighbour pair
+  const nbRows = [];
+  allResults.forEach(({site, sectorResults}) => {
+    sectorResults.forEach(r => {
+      const srcCell = `${site.name}_S${r.idx+1}`;
+      const srcBCCH = r.bcch ?? "";
+      const srcTCH = [...r.tch900List, ...r.tch1800List].join(" ");
+
+      // Intra-site: other sectors of the same physical site → rank 0
+      sectorResults.filter(s => s.idx !== r.idx).forEach(s => {
+        nbRows.push({
+          Source_Cell: srcCell,
+          Target_Cell: `${site.name}_S${s.idx+1}`,
+          Rank: 0,
+          Distance_km: 0,
+          Tier: "Intra-site",
+          Fwd_Overlap_pct: "",
+          Rev_Overlap_pct: "",
+          Source_BCCH: srcBCCH,
+          Neighbour_BCCH: s.bcch ?? "",
+          Source_TCH: srcTCH,
+          Neighbour_TCH: [...s.tch900List, ...s.tch1800List].join(" "),
+        });
+      });
+
+      // External neighbours — already sorted by priority/relevance → rank 1, 2, 3 …
+      r.externalNeighbors.forEach((nb, i) => {
+        nbRows.push({
+          Source_Cell: srcCell,
+          Target_Cell: nb.cellName,
+          Rank: i + 1,
+          Distance_km: Number(nb.dist).toFixed(3),
+          Tier: nb.tier === 1 ? "1st" : nb.tier === 2 ? "2nd" : "3rd",
+          Fwd_Overlap_pct: Math.round(nb.fwdS * 100),
+          Rev_Overlap_pct: Math.round(nb.revS * 100),
+          Source_BCCH: srcBCCH,
+          Neighbour_BCCH: nb.bcch ?? "",
+          Source_TCH: srcTCH,
+          Neighbour_TCH: (nb.tchList || []).join(" "),
+        });
+      });
+    });
+  });
+
+  const HDR = {
+    fill: {patternType:'solid', fgColor:{rgb:'1F4E79'}},
+    font: {bold:true, color:{rgb:'FFFFFF'}},
+    alignment: {horizontal:'center', vertical:'center'},
+  };
+  function styledSheet(rows, xSplit) {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    if (ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({r:0, c:C});
+        if (ws[addr]) ws[addr].s = HDR;
+      }
+    }
+    ws['!views'] = [{state:'frozen', xSplit, ySplit:1, topLeftCell: XLSX.utils.encode_cell({r:1, c:xSplit}), activePane:'bottomRight'}];
+    return ws;
+  }
+
+  const wb = XLSX.utils.book_new();
+  wb.Props = { Author:"Ankit Jain", Title:"2G Frequency Plan", CreatedDate:new Date() };
+  XLSX.utils.book_append_sheet(wb, styledSheet(freqRows, 4), "Freq Plan");       // freeze after Sector (col D)
+  XLSX.utils.book_append_sheet(wb, styledSheet(nbRows, 1), "Neighbour Plan");    // freeze after Source_Cell (col A)
+  XLSX.writeFile(wb, "freq_plan.xlsx", {cellStyles:true});
+}
+
+// ── Default state ─────────────────────────────────────────────────────────────
+const DEFAULT_BANDS=[
+  {id:"b1",name:"GSM-900", bcchStr:"76-87",       tchStr:"88-101, 123, 124"},
+  {id:"b2",name:"GSM-1800",bcchStr:"562,563,610", tchStr:"564-571,601-610"},
+];
+
+// ── UI atoms ──────────────────────────────────────────────────────────────────
+const CARD={background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1rem 1.25rem",marginBottom:"12px"};
+const FN={fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"};
+const MONO={fontFamily:"var(--font-mono)",fontSize:"12px"};
+
+function Steps({current,onNav}) {
+  return(
+    <div style={{display:"flex",marginBottom:"24px"}}>
+      {["Load data","Configure","Results"].map((s,i)=>{
+        const n=i+1,active=n===current,done=n<current;
+        return(
+          <div key={n} style={{display:"flex",alignItems:"center",flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",cursor:done?"pointer":"default"}} onClick={()=>done&&onNav(n)}>
+              <div style={{width:"22px",height:"22px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:"500",flexShrink:0,
+                background:active?"var(--color-background-info)":done?"var(--color-background-success)":"var(--color-background-secondary)",
+                color:active?"var(--color-text-info)":done?"var(--color-text-success)":"var(--color-text-tertiary)",
+                border:`0.5px solid ${active?"var(--color-border-info)":done?"var(--color-border-success)":"var(--color-border-tertiary)"}`
+              }}>{done?"✓":n}</div>
+              <span style={{fontSize:"13px",color:active?"var(--color-text-primary)":"var(--color-text-tertiary)",fontWeight:active?"500":"400"}}>{s}</span>
+            </div>
+            {i<2&&<div style={{flex:1,height:"0.5px",background:"var(--color-border-tertiary)",margin:"0 12px"}}/>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ColMapper({headers,mapping,onChange,fields}) {
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:"8px",marginTop:"10px"}}>
+      {Object.entries(fields).map(([key,label])=>(
+        <div key={key}>
+          <div style={FN}>{label}</div>
+          <select value={mapping[key]||""} onChange={e=>onChange({...mapping,[key]:e.target.value})} style={{width:"100%",fontSize:"12px",fontFamily:"var(--font-mono)"}}>
+            <option value="">— select —</option>
+            {headers.map(h=><option key={h} value={h}>{h}</option>)}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FileBlock({id,title,hint,data,onLoad,sheetHint,note}) {
+  const [loading,setLoading]=useState(false);
+  const ref=useRef();
+  const handle=async e=>{
+    const file=e.target.files[0];if(!file)return;
+    setLoading(true);
+    try{const d=await parseFile(file,sheetHint);onLoad(d,file.name);}
+    catch(ex){alert("Failed to read: "+ex.message);}
+    finally{setLoading(false);}
+  };
+  return(
+    <div style={CARD}>
+      <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"3px"}}>{title}</div>
+      <div style={{fontSize:"12px",color:"var(--color-text-secondary)",marginBottom:"10px"}}>{hint}</div>
+      <input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={handle} id={id} ref={ref} style={{display:"none"}}/>
+      <button onClick={()=>ref.current.click()} disabled={loading}>{loading?"Reading…":"Upload file"}</button>
+      {note&&<div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"8px"}}>{note}</div>}
+      {data&&<div style={{fontSize:"12px",color:"var(--color-text-success)",marginTop:"10px"}}>
+        ✓ {data.rows.length.toLocaleString()} rows{data.sheetName?` · sheet: "${data.sheetName}"`:""}
+        {data.allSheets?.length>1&&<span style={{color:"var(--color-text-tertiary)",fontSize:"11px"}}> · other sheets: {data.allSheets.filter(s=>s!==data.sheetName).join(", ")}</span>}
+      </div>}
+    </div>
+  );
+}
+
+function Pill({n,type}) {
+  const m={default:{bg:"var(--color-background-secondary)",c:"var(--color-text-secondary)",b:"var(--color-border-secondary)"},
+    warn:{bg:"var(--color-background-warning)",c:"var(--color-text-warning)",b:"var(--color-border-warning)"},
+    danger:{bg:"var(--color-background-danger)",c:"var(--color-text-danger)",b:"var(--color-border-danger)"},
+    info:{bg:"var(--color-background-info)",c:"var(--color-text-info)",b:"var(--color-border-info)"},
+    teal:{bg:"rgba(29,158,117,0.12)",c:"#0f6e56",b:"rgba(29,158,117,0.4)"}};
+  const s=m[type||"default"];
+  return <span style={{display:"inline-block",padding:"2px 7px",borderRadius:"4px",fontSize:"12px",fontFamily:"var(--font-mono)",margin:"2px",background:s.bg,color:s.c,border:`0.5px solid ${s.b}`}}>{n}</span>;
+}
+
+function ModeBadge({mode}) {
+  const cfg={clean:{l:"✓ clean",t:"info"},bsic_only:{l:"⚠ BSIC guard",t:"warn"},forced:{l:"⚠ forced",t:"warn"},site_adj:{l:"~ x-sector adj",t:"warn"},intra_adj:{l:"⚠ intra-adj",t:"warn"},reuse:{l:"⚠ reuse",t:"warn"},"n/a":{l:"—",t:"default"}};
+  const c=cfg[mode]||{l:mode,t:"default"};
+  const m={info:{bg:"var(--color-background-info)",color:"var(--color-text-info)",b:"var(--color-border-info)"},
+    warn:{bg:"var(--color-background-warning)",color:"var(--color-text-warning)",b:"var(--color-border-warning)"},
+    default:{bg:"var(--color-background-secondary)",color:"var(--color-text-tertiary)",b:"var(--color-border-tertiary)"}};
+  const s=m[c.t]||m.default;
+  return <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"4px",background:s.bg,color:s.color,border:`0.5px solid ${s.b}`,fontWeight:"500",whiteSpace:"nowrap"}}>{c.l}</span>;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+function FreqPlanner() {
+  const [step,setStep]=useState(1);
+  const [gisData,setGisData]=useState(null);    const [gisMap,setGisMap]=useState({});
+  const [paramData,setParamData]=useState(null); const [paramMap,setParamMap]=useState({});
+  const [nsData,setNsData]=useState(null);       const [nsMap,setNsMap]=useState({});
+  const [cells,setCells]=useState([]);
+  const [plannedSites,setPlannedSites]=useState([]);
+  const [cfg,setCfg]=useState({firstTierRadius:5,searchRadius:10,beamWidth:65,nccStr:"0-7",maxNeighbours:10,bsicRadius:50,bands:DEFAULT_BANDS});
+  const [results,setResults]=useState(null);
+  const [activeSite,setActiveSite]=useState(0);
+  const [activeTab,setActiveTab]=useState(0);
+  const [err,setErr]=useState("");
+
+  const updBand=(i,k,v)=>setCfg(c=>({...c,bands:c.bands.map((b,j)=>j===i?{...b,[k]:v}:b)}));
+
+  const onGisLoad=d=>{setGisData(d);setGisMap(detectGISCols(d.headers));};
+  const onParamLoad=d=>{setParamData(d);setParamMap(detectParamCols(d.headers));};
+  const onNsLoad=d=>{setNsData(d);setNsMap(detectNewSitesCols(d.headers));};
+
+  const processAll=()=>{
+    if(!gisData||!paramData||!nsData){setErr("Upload all three files first");return;}
+    // Build parameter lookup
+    const pLookup={};
+    paramData.rows.forEach(row=>{
+      const name=row[paramMap.cellName]?.trim();if(!name)return;
+      let ncc=parseInt(row[paramMap.ncc]),bcc=parseInt(row[paramMap.bcc]);
+      if(paramMap.bsic&&(isNaN(ncc)||isNaN(bcc))){const bs=parseInt(row[paramMap.bsic]);if(!isNaN(bs)){ncc=bs>>3;bcc=bs&7;}}
+      const tchList=(row[paramMap.tch]||"").split(/[\s,;]+/).map(Number).filter(n=>!isNaN(n)&&n>0);
+      const lac=paramMap.lac?parseInt(row[paramMap.lac]):NaN;
+      const rac=paramMap.rac?parseInt(row[paramMap.rac]):NaN;
+      const bsc=paramMap.bsc?row[paramMap.bsc]?.trim()||null:null;
+      pLookup[name]={bcch:parseInt(row[paramMap.bcch])||null,tchList,ncc:isNaN(ncc)?null:ncc,bcc:isNaN(bcc)?null:bcc,lac:isNaN(lac)?null:lac,rac:isNaN(rac)?null:rac,bsc};
+    });
+    // Merge GIS + params
+    const merged=gisData.rows.map(row=>{
+      const cellName=row[gisMap.cellName]?.trim(),siteName=row[gisMap.siteName]?.trim();
+      const lat=parseFloat(row[gisMap.lat]),lon=parseFloat(row[gisMap.lon]);
+      const azimuth=parseFloat(row[gisMap.azimuth])||0;
+      if(!cellName||isNaN(lat)||isNaN(lon))return null;
+      return{cellName,siteName,lat,lon,azimuth,...(pLookup[cellName]||{})};
+    }).filter(Boolean);
+    if(!merged.length){setErr("No cells merged from GIS — check column mappings");return;}
+    // Parse new sites
+    const sites=buildPlannedSites(nsData.rows,nsMap);
+    if(!sites.length){setErr("No valid rows in new sites CSV — check column mappings");return;}
+    setCells(merged);
+    setPlannedSites(sites);
+    setErr("");setStep(2);
+  };
+
+  const runPlan=()=>{
+    for(const s of plannedSites){
+      if(isNaN(parseFloat(s.lat))||isNaN(parseFloat(s.lon))){setErr(`Invalid coords for ${s.name}`);return;}
+    }
+    const res=planAllSites(plannedSites,cells,cfg);
+    setResults(res);setActiveSite(0);setActiveTab(0);setErr("");setStep(3);
+  };
+
+  const cur=results?.[activeSite];
+  const sec=cur?.sectorResults?.[activeTab];
+
+  return(
+    <div style={{paddingTop:"8px"}}>
+      <p style={{fontSize:"13px",color:"var(--color-text-secondary)",marginBottom:"20px",marginTop:"4px"}}>
+        Upload existing network data + new sites → get BCCH, TCH, BSIC, LAC/RAC/BSC per sector.
+      </p>
+      <Steps current={step} onNav={setStep}/>
+      {err&&<div style={{background:"var(--color-background-danger)",border:"0.5px solid var(--color-border-danger)",color:"var(--color-text-danger)",padding:"10px 14px",borderRadius:"var(--border-radius-md)",marginBottom:"16px",fontSize:"13px"}}>⚠ {err}</div>}
+
+      {/* ── STEP 1: Upload all three files ── */}
+      {step===1&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px"}}>
+            {/* GIS */}
+            <div>
+              <FileBlock id="gis-f" title="GIS database" hint="Sites · cells · lat/lon · azimuth"
+                note="CSV or XLSX. Must contain one row per cell/sector of the existing network."
+                data={gisData} onLoad={onGisLoad}/>
+              {gisData&&<div style={{...CARD,marginTop:"-4px"}}>
+                <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
+                <ColMapper headers={gisData.headers} mapping={gisMap} onChange={setGisMap}
+                  fields={{siteName:"Site name",cellName:"Cell name *",lat:"Latitude *",lon:"Longitude *",azimuth:"Azimuth"}}/>
+              </div>}
+            </div>
+
+            {/* Parameter dump */}
+            <div>
+              <FileBlock id="par-f" title="Nokia CMExport parameters"
+                hint="2G.Summary.DDMMYY.xlsx · sheet: Cell Details"
+                note='Opens directly from your CMExport folder. Auto-selects "Cell Details" sheet.'
+                data={paramData} onLoad={onParamLoad} sheetHint="Cell Details"/>
+              {paramData&&<div style={{...CARD,marginTop:"-4px"}}>
+                <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
+                <ColMapper headers={paramData.headers} mapping={paramMap} onChange={setParamMap}
+                  fields={{cellName:"Cell name *",bcch:"BCCH *",tch:"TCH / MA list",ncc:"NCC",bcc:"BCC",bsic:"BSIC (alt)",lac:"LAC",rac:"RAC",bsc:"BSC"}}/>
+              </div>}
+            </div>
+
+            {/* New sites */}
+            <div>
+              <FileBlock id="ns-f" title="New sites to plan"
+                hint="One row per sector · Site Name, Lat, Lon, Azimuth, TRX_900, TRX_1800"
+                note="Multiple rows with the same Site Name = multiple sectors of that site. TRX_900 = 0 means no 900 band for that cell."
+                data={nsData} onLoad={onNsLoad}/>
+              {nsData&&<div style={{...CARD,marginTop:"-4px"}}>
+                <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
+                <ColMapper headers={nsData.headers} mapping={nsMap} onChange={setNsMap}
+                  fields={{siteName:"Site name *",siteId:"Site ID",lat:"Latitude *",lon:"Longitude *",azimuth:"Azimuth *",trx900:"TRX_900 *",trx1800:"TRX_1800 *"}}/>
+                {/* Preview */}
+                {nsData.rows.length>0&&nsMap.siteName&&(()=>{
+                  const preview=buildPlannedSites(nsData.rows,nsMap);
+                  return preview.length>0&&(
+                    <div style={{marginTop:"10px",fontSize:"12px"}}>
+                      <div style={{color:"var(--color-text-secondary)",marginBottom:"6px"}}>Parsed: {preview.length} site{preview.length>1?"s":""}, {preview.reduce((s,p)=>s+p.sectors.length,0)} sectors total</div>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:"11px",fontFamily:"var(--font-mono)"}}>
+                        <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                          {["Site","Sec","Az°","T900","T1800"].map(h=><th key={h} style={{padding:"3px 6px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left"}}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {preview.flatMap(p=>p.sectors.map((s,i)=>(
+                            <tr key={`${p.name}-${i}`} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
+                              <td style={{padding:"3px 6px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"80px"}}>{i===0?p.name:""}</td>
+                              <td style={{padding:"3px 6px",color:"var(--color-text-tertiary)"}}>S{i+1}</td>
+                              <td style={{padding:"3px 6px"}}>{s.azimuth}°</td>
+                              <td style={{padding:"3px 6px",color:s.trx900>0?"var(--color-text-warning)":"var(--color-text-tertiary)"}}>{s.trx900}</td>
+                              <td style={{padding:"3px 6px",color:s.trx1800>0?"var(--color-text-info)":"var(--color-text-tertiary)"}}>{s.trx1800}</td>
+                            </tr>
+                          )))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>}
+            </div>
+          </div>
+
+          {gisData&&paramData&&nsData&&<button className="primary" style={{marginTop:"8px"}} onClick={processAll}>Process all files and continue →</button>}
+        </div>
+      )}
+
+      {/* ── STEP 2: Algorithm + band config ── */}
+      {step===2&&(
+        <div>
+          <div style={{fontSize:"12px",color:"var(--color-text-secondary)",marginBottom:"16px"}}>
+            {cells.length.toLocaleString()} existing cells · {plannedSites.length} new site{plannedSites.length>1?"s":""} · {plannedSites.reduce((s,p)=>s+p.sectors.length,0)} sectors to plan
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
+            <div style={CARD}>
+              <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"14px"}}>Algorithm parameters</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                <div>
+                  <div style={FN}>Search radius (km)</div>
+                  <input type="text" value={cfg.searchRadius}
+                    onChange={e=>setCfg(c=>({...c,searchRadius:parseFloat(e.target.value)||5}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Urban: 3–5 km · Rural: 8–15 km</div>
+                </div>
+                <div>
+                  <div style={FN}>1st tier radius (km)</div>
+                  <input type="text" value={cfg.firstTierRadius}
+                    onChange={e=>setCfg(c=>({...c,firstTierRadius:parseFloat(e.target.value)||2}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Strict no-same-BCCH zone</div>
+                </div>
+                <div>
+                  <div style={FN}>BSIC uniqueness radius (km)</div>
+                  <input type="text" value={cfg.bsicRadius}
+                    onChange={e=>setCfg(c=>({...c,bsicRadius:parseFloat(e.target.value)||50}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>BSIC+BCCH combo unique within this distance; retries at 80% steps</div>
+                </div>
+                <div>
+                  <div style={FN}>Beam width (°)</div>
+                  <input type="text" value={cfg.beamWidth}
+                    onChange={e=>setCfg(c=>({...c,beamWidth:parseFloat(e.target.value)||130}))} style={MONO}/>
+                </div>
+                <div>
+                  <div style={FN}>NCC pool</div>
+                  <input type="text" value={cfg.nccStr}
+                    onChange={e=>setCfg(c=>({...c,nccStr:e.target.value}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>e.g. 0-7 or 2,4,6</div>
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <div style={FN}>Max external neighbours per sector</div>
+                  <input type="text" value={cfg.maxNeighbours}
+                    onChange={e=>setCfg(c=>({...c,maxNeighbours:parseInt(e.target.value)||10}))} style={{...MONO,width:"100px"}}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Beyond 1st-tier, only cells with beam overlap are counted toward this limit</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={CARD}>
+              <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"4px"}}>Band ARFCN pools</div>
+              <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"12px"}}>
+                Band 1 = 900 (BCCH + TCH). Band 2 = 1800 (TCH only for dual-band cells). Ranges: 76-87, lists: 88-101, 123, 124.
+              </div>
+              {cfg.bands.map((bd,i)=>{
+                const bp=getBcchPool(bd),tp=getTchPool(bd);
+                return(
+                  <div key={bd.id} style={{marginBottom:"14px",paddingBottom:"14px",borderBottom:i<cfg.bands.length-1?"0.5px solid var(--color-border-tertiary)":"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}}>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",minWidth:"50px"}}>Band {i+1}</div>
+                      <input value={bd.name} onChange={e=>updBand(i,"name",e.target.value)} style={{...MONO,fontWeight:"500",width:"110px"}}/>
+                      <span style={{fontSize:"11px",color:"var(--color-text-tertiary)"}}>{bp.length} BCCH · {tp.length} TCH</span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+                      <div>
+                        <div style={FN}>BCCH ARFCNs</div>
+                        <input value={bd.bcchStr} onChange={e=>updBand(i,"bcchStr",e.target.value)} style={{...MONO,width:"100%"}} placeholder="e.g. 76-87"/>
+                        {bp.length>0&&<div style={{fontSize:"11px",color:"var(--color-text-success)",marginTop:"2px"}}>→ {arfcnListToStr(bp)} ({bp.length})</div>}
+                      </div>
+                      <div>
+                        <div style={FN}>TCH ARFCNs</div>
+                        <input value={bd.tchStr} onChange={e=>updBand(i,"tchStr",e.target.value)} style={{...MONO,width:"100%"}} placeholder="e.g. 88-101, 123, 124"/>
+                        {tp.length>0&&<div style={{fontSize:"11px",color:"var(--color-text-success)",marginTop:"2px"}}>→ {arfcnListToStr(tp)} ({tp.length})</div>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{fontSize:"12px",color:"var(--color-text-secondary)",background:"var(--color-background-secondary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-md)",padding:"10px 14px",marginBottom:"12px"}}>
+            TCH count is derived per sector from your CSV: <strong>900 TCH = TRX_900 − 1</strong> (one TRX carries BCCH) · <strong>1800 TCH = TRX_1800</strong> (all TCH, BCCH stays on 900). For 1800-only cells: BCCH on 1800, TCH = TRX_1800 − 1.
+            Sites are planned in CSV order — each site's assignment is locked before the next one starts.
+          </div>
+
+          <div style={{display:"flex",gap:"10px"}}>
+            <button onClick={()=>setStep(1)}>← Back</button>
+            <button className="primary" onClick={runPlan}>Plan {plannedSites.length} site{plannedSites.length>1?"s":""} →</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: Results ── */}
+      {step===3&&results&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",marginBottom:"16px"}}>
+            <div style={{fontSize:"15px",fontWeight:"500"}}>{results.length} site{results.length>1?"s":""} planned</div>
+            <div style={{marginLeft:"auto",display:"flex",gap:"8px"}}>
+              <button onClick={()=>setStep(2)}>← Reconfigure</button>
+              <button className="primary" onClick={()=>exportAll(results)}>Export XLSX ↗</button>
+            </div>
+          </div>
+
+          {/* Site selector */}
+          <div style={{display:"flex",gap:"8px",marginBottom:"16px",flexWrap:"wrap"}}>
+            {results.map(({site},i)=>(
+              <button key={i} onClick={()=>{setActiveSite(i);setActiveTab(0);}}
+                style={{fontSize:"12px",fontWeight:activeSite===i?"500":"400",fontFamily:"var(--font-mono)",padding:"6px 14px",borderRadius:"var(--border-radius-md)",
+                  background:activeSite===i?"var(--color-background-info)":"var(--color-background-secondary)",
+                  color:activeSite===i?"var(--color-text-info)":"var(--color-text-secondary)",
+                  border:`0.5px solid ${activeSite===i?"var(--color-border-info)":"var(--color-border-tertiary)"}`}}>
+                {site.name}
+              </button>
+            ))}
+          </div>
+
+          {cur&&(
+            <>
+              {/* Site summary table */}
+              <div style={{...CARD,marginBottom:"16px"}}>
+                <div style={{display:"flex",alignItems:"center",marginBottom:"10px"}}>
+                  <span style={{fontSize:"13px",fontWeight:"500"}}>{cur.site.name}</span>
+                  {activeSite>0&&<span style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginLeft:"10px"}}>planned after {activeSite} prior site{activeSite>1?"s":""} — their freqs locked</span>}
+                </div>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)"}}>
+                    <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                      {["Sec","Az","T900/T1800","BCCH","BCCH","900 TCH","","1800 TCH","","BSIC","Dec"].map((h,i)=>(
+                        <th key={i} style={{padding:"5px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {cur.sectorResults.map((r,i)=>(
+                        <tr key={i} onClick={()=>setActiveTab(i)}
+                          style={{borderBottom:"0.5px solid var(--color-border-tertiary)",cursor:"pointer",background:activeTab===i?"var(--color-background-secondary)":"transparent"}}>
+                          <td style={{padding:"5px 8px",fontWeight:"500"}}>S{r.idx+1}</td>
+                          <td style={{padding:"5px 8px"}}>{r.az}° {dirLabel(r.az)}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-tertiary)"}}>{r.trx900}/{r.trx1800}</td>
+                          <td style={{padding:"5px 8px",fontWeight:"500",color:"var(--color-text-warning)"}}>{r.bcch||"—"}</td>
+                          <td style={{padding:"5px 8px"}}><ModeBadge mode={r.bcchMode}/></td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",fontFamily:"var(--font-mono)",fontSize:"11px"}}>{r.tch900List.length?r.tch900List.join(" "):"—"}</td>
+                          <td style={{padding:"5px 8px"}}>{r.tch900Count>0&&<ModeBadge mode={r.tch900Mode}/>}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",fontFamily:"var(--font-mono)",fontSize:"11px"}}>{r.tch1800List.length?r.tch1800List.join(" "):"—"}</td>
+                          <td style={{padding:"5px 8px"}}>{r.tch1800Count>0&&<ModeBadge mode={r.tch1800Mode}/>}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-info)"}}>{r.bsic}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-tertiary)"}}>{r.bsicDec}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"6px"}}>Click a row for neighbour detail below.</div>
+              </div>
+
+              {/* Sector detail */}
+              {sec&&(
+                <div>
+                  <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"12px"}}>
+                    {cur.site.name} · S{sec.idx+1} — {sec.az}° {dirLabel(sec.az)}
+                    <span style={{fontWeight:"400",color:"var(--color-text-tertiary)",marginLeft:"10px",fontSize:"12px"}}>
+                      {sec.trx900} TRX on 900 + {sec.trx1800} TRX on 1800
+                      {sec.has900&&sec.has1800&&<> · dual-band, BCCH on 900</>}
+                      {sec.has900&&!sec.has1800&&<> · 900-only</>}
+                      {!sec.has900&&sec.has1800&&<> · 1800-only, BCCH on 1800</>}
+                    </span>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"12px",marginBottom:"16px"}}>
+                    {/* BCCH */}
+                    <div style={CARD}>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>BCCH ({sec.bcchBandName})</div>
+                      <div style={{fontFamily:"var(--font-mono)",fontSize:"26px",fontWeight:"500",color:"var(--color-text-warning)",marginBottom:"6px"}}>{sec.bcch||"—"}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}><ModeBadge mode={sec.bcchMode}/></div>
+                      {(sec.bcchMode==="t1_reuse"||sec.bcchMode==="t2_reuse")&&<div style={{fontSize:"11px",color:"var(--color-text-warning)",background:"var(--color-background-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"4px",padding:"5px 8px",marginBottom:"8px"}}>
+                        {sec.bcchMode==="t1_reuse"?"T1":"T2"} BCCH reuse. Differentiated by BSIC {sec.bsic}.
+                      </div>}
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"}}>T1 BCCHs: {(sec.tier1BCCHs||[]).map(b=><Pill key={b} n={b} type={b===sec.bcch?"warn":"default"}/>)||"—"}</div>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"6px",marginBottom:"3px"}}>All neighbour BCCHs:</div>
+                      <div>{sec.allNbBCCHs.slice(0,20).map(b=><Pill key={b} n={b} type={b===sec.bcch?"danger":"default"}/>)}{sec.allNbBCCHs.length>20&&<span style={{fontSize:"11px",color:"var(--color-text-tertiary)"}}> +{sec.allNbBCCHs.length-20}</span>}</div>
+                    </div>
+
+                    {/* TCH 900 */}
+                    <div style={CARD}>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>
+                        900 MHz TCH ({sec.tch900Count} freq needed)
+                      </div>
+                      {sec.tch900Count===0
+                        ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No 900 TCH — BCCH TRX only</div>
+                        :<>
+                          <div style={{marginBottom:"8px"}}>{sec.tch900List.length?sec.tch900List.map(t=><Pill key={t} n={t} type="warn"/>):<span style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>—</span>}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}><ModeBadge mode={sec.tch900Mode}/></div>
+                          <div style={{fontSize:"12px",color:"var(--color-text-secondary)"}}>{sec.tch900List.length} assigned{sec.tch900List.length>1?` · span ${Math.max(...sec.tch900List)-Math.min(...sec.tch900List)} ch`:""}</div>
+                        </>
+                      }
+                    </div>
+
+                    {/* TCH 1800 + BSIC */}
+                    <div>
+                      <div style={{...CARD,marginBottom:"10px"}}>
+                        <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>
+                          1800 MHz TCH ({sec.tch1800Count} freq needed)
+                        </div>
+                        {sec.tch1800Count===0
+                          ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No 1800 band on this cell</div>
+                          :<>
+                            <div style={{marginBottom:"8px"}}>{sec.tch1800List.length?sec.tch1800List.map(t=><Pill key={t} n={t} type="info"/>):<span style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>—</span>}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}><ModeBadge mode={sec.tch1800Mode}/></div>
+                            <div style={{fontSize:"12px",color:"var(--color-text-secondary)"}}>{sec.tch1800List.length} assigned{sec.tch1800List.length>1?` · span ${Math.max(...sec.tch1800List)-Math.min(...sec.tch1800List)} ch`:""}</div>
+                          </>
+                        }
+                      </div>
+                      <div style={{...CARD,marginBottom:0}}>
+                        <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>BSIC</div>
+                        <div style={{fontFamily:"var(--font-mono)",fontSize:"22px",fontWeight:"500",color:"var(--color-text-info)",marginBottom:"4px"}}>{sec.bsic}</div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginTop:"6px"}}>
+                          {[["NCC",sec.ncc],["BCC",sec.bcc]].map(([l,v])=>(
+                            <div key={l} style={{background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"8px",textAlign:"center"}}>
+                              <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"}}>{l}</div>
+                              <div style={{fontFamily:"var(--font-mono)",fontSize:"18px",fontWeight:"500",color:"var(--color-text-info)"}}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Neighbour list */}
+                  <div style={CARD}>
+                    <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"14px"}}>Neighbour cell list</div>
+
+                    <div style={{fontSize:"11px",fontWeight:"500",color:"var(--color-text-tertiary)",letterSpacing:"0.5px",marginBottom:"6px",textTransform:"uppercase"}}>Intra-site</div>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)",marginBottom:"16px"}}>
+                      <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                        {["Cell","Az","BCCH","900 TCH","1800 TCH","BSIC"].map(h=><th key={h} style={{padding:"4px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px"}}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {/* Other sectors of same site */}
+                        {cur.sectorResults.filter(s=>s.idx!==sec.idx).map(s=>(
+                          <tr key={s.idx} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
+                            <td style={{padding:"4px 8px",fontWeight:"500"}}>{cur.site.name}_S{s.idx+1}</td>
+                            <td style={{padding:"4px 8px"}}>{s.az}° {dirLabel(s.az)}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-warning)"}}>{s.bcch}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch900List.join(" ")||"—"}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch1800List.join(" ")||"—"}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-info)"}}>{s.bsic}</td>
+                          </tr>
+                        ))}
+                        {/* Other planned sites */}
+                        {results.filter((_,i)=>i!==activeSite).flatMap(({site,sectorResults})=>
+                          sectorResults.map(s=>(
+                            <tr key={`${site.name}-${s.idx}`} style={{borderBottom:"0.5px solid var(--color-border-tertiary)",background:"var(--color-background-secondary)"}}>
+                              <td style={{padding:"4px 8px",fontWeight:"500",color:"var(--color-text-info)"}}>{site.name}_S{s.idx+1} ★</td>
+                              <td style={{padding:"4px 8px"}}>{s.az}° {dirLabel(s.az)}</td>
+                              <td style={{padding:"4px 8px",color:"var(--color-text-warning)"}}>{s.bcch}</td>
+                              <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch900List.join(" ")||"—"}</td>
+                              <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch1800List.join(" ")||"—"}</td>
+                              <td style={{padding:"4px 8px",color:"var(--color-text-info)"}}>{s.bsic}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    <div style={{fontSize:"11px",fontWeight:"500",color:"var(--color-text-tertiary)",letterSpacing:"0.5px",marginBottom:"4px",textTransform:"uppercase"}}>
+                      External {sec.externalNeighbors.length} shown · T1: {sec.stats.tier1Count} · T2: {sec.stats.tier2Count} · {sec.stats.total} in search range
+                    </div>
+                    <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"8px",display:"flex",gap:"12px",flexWrap:"wrap"}}>
+                      <span><span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T1</span> Direct beam overlap with source — mandatory neighbours</span>
+                      <span><span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T2</span> Overlaps a T1 cell — one handover hop away</span>
+                    </div>
+                    {sec.externalNeighbors.length===0
+                      ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No external neighbours in range.</div>
+                      :<div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)",tableLayout:"fixed"}}>
+                          <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                            {["#","Cell","Site","km","Az","Bear","→ ovlp","← ovlp","BCCH","BSIC"].map((h,i)=>(
+                              <th key={h} style={{padding:"5px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px",
+                                width:["36px","120px","100px","52px","50px","50px","68px","68px","50px","50px"][i]}}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {sec.externalNeighbors.map((nb,i)=>(
+                              <tr key={i} style={{borderBottom:"0.5px solid var(--color-border-tertiary)",background:i%2?"transparent":"var(--color-background-secondary)"}}>
+                                <td style={{padding:"5px 8px"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                                    <span style={{color:"var(--color-text-tertiary)",fontSize:"11px",minWidth:"14px"}}>{i+1}</span>
+                                    {nb.tier===1&&<span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T1</span>}
+                                    {nb.tier===2&&<span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T2</span>}
+                                  </div>
+                                </td>
+                                <td style={{padding:"5px 8px",fontWeight:"500",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:nb.isPlanned?"var(--color-text-info)":"var(--color-text-primary)"}}>{nb.cellName}{nb.isPlanned?" ★":""}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nb.siteName||"—"}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-warning)"}}>{Number(nb.dist).toFixed(2)}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)"}}>{nb.azimuth}°</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)"}}>{Number(nb.bear).toFixed(0)}°</td>
+                                <td style={{padding:"5px 8px"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"3px"}}>
+                                    <div style={{flex:1,height:"5px",background:"var(--color-background-secondary)",borderRadius:"2px"}}>
+                                      <div style={{width:`${Math.round(nb.fwdS*100)}%`,height:"5px",background:"var(--color-background-warning)",borderRadius:"2px"}}/>
+                                    </div>
+                                    <span style={{fontSize:"10px",color:"var(--color-text-tertiary)",minWidth:"22px"}}>{Math.round(nb.fwdS*100)}%</span>
+                                  </div>
+                                </td>
+                                <td style={{padding:"5px 8px"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"3px"}}>
+                                    <div style={{flex:1,height:"5px",background:"var(--color-background-secondary)",borderRadius:"2px"}}>
+                                      <div style={{width:`${Math.round(nb.revS*100)}%`,height:"5px",background:"var(--color-background-info)",borderRadius:"2px"}}/>
+                                    </div>
+                                    <span style={{fontSize:"10px",color:"var(--color-text-tertiary)",minWidth:"22px"}}>{Math.round(nb.revS*100)}%</span>
+                                  </div>
+                                </td>
+                                <td style={{padding:"5px 8px",color:nb.bcch===sec.bcch?"var(--color-text-danger)":"var(--color-text-primary)",fontWeight:nb.bcch===sec.bcch?"500":"400"}}>{nb.bcch||"—"}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)"}}>{nb.ncc!=null&&nb.bcc!=null?`${nb.ncc}/${nb.bcc}`:"—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"6px"}}>★ = other planned site in this batch</div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<FreqPlanner />);
+  </script>
+</body>
+</html>
