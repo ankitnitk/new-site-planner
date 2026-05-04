@@ -338,9 +338,20 @@ function spreadSelect(pool, count, minSep=1) {
 }
 
 // ── TCH planner (shared for 900 and 1800) ────────────────────────────────────
-function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count) {
-  // siteRegTCH = TCHs already assigned to OTHER sectors of this site (not this sector)
+function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTCH) {
+  // siteRegTCH    = TCHs already assigned to OTHER sectors of this site
+  // sameSectorTCH = TCHs already assigned to THIS sector in earlier round-robin rounds
+  sameSectorTCH = sameSectorTCH || [];
   if (!count || !tchPool.length) return {list:[], mode:"n/a"};
+  // Intra-sector ACI hard constraint: same-sector previously assigned TCHs and their
+  // ±1 adjacencies must never appear again — minSep=2 within the same TRX chain.
+  // Pre-filter the entire pool so this is never relaxed by any cascade pass.
+  if (sameSectorTCH.length) {
+    const sameSecExclude = new Set();
+    sameSectorTCH.forEach(t => { sameSecExclude.add(t-1); sameSecExclude.add(t); sameSecExclude.add(t+1); });
+    tchPool = tchPool.filter(a => !sameSecExclude.has(a));
+    if (!tchPool.length) return {list:[], mode:"impossible"};
+  }
   tchPool = shuffle(tchPool); // randomize starting point to avoid low-ARFCN bias
   const tchPoolSet = new Set(tchPool);
 
@@ -767,12 +778,12 @@ function planOneSite(site, workingCells, cfg) {
     for (let i=0; i<sectorResults.length; i++) {
       const s = sectorResults[i];
       if (acc900[i].list.length < s.tch900Count) {
-        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1);
+        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1, acc900[i].list);
         acc900[i].list.push(...list);
         acc900[i].mode = worseMode(acc900[i].mode, mode);
       }
       if (acc1800[i].list.length < s.tch1800Count) {
-        const {list,mode} = planTCH(s._tch1800Pool, s._scored, new Set(), siteReg.tch1800, 1);
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, new Set(), siteReg.tch1800, 1, acc1800[i].list);
         acc1800[i].list.push(...list);
         acc1800[i].mode = worseMode(acc1800[i].mode, mode);
       }
