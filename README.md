@@ -17,7 +17,7 @@ A single-file browser-based tool for planning GSM (2G) radio frequencies, BSIC, 
 3. **Step 2 — Configure** algorithm parameters and ARFCN pools.
 4. **Step 3 — Plan** and review results per site/sector. Export to Excel.
 
-> **Offline use:** if CDN scripts fail to load, download the four JS libraries listed in the HTML `<head>` comment and reference them locally.
+> **Offline use:** `index_offline.html` bundles all JS libraries locally — no internet required. Open it directly.
 
 ---
 
@@ -27,7 +27,7 @@ A single-file browser-based tool for planning GSM (2G) radio frequencies, BSIC, 
 |-----------|---------|-------------|
 | Search radius (km) | 10 | Maximum distance to consider any cell as a candidate neighbour or frequency conflict |
 | 1st tier radius (km) | 5 | Distance cap for T1 neighbour classification and strict BCCH avoidance |
-| BSIC uniqueness radius (km) | 50 | BCCH+BSIC combination must be unique within this distance; retries at 80% steps |
+| BSIC uniqueness radius (km) | 50 | Target radius for BCCH+BSIC triplet uniqueness; shrinks per BCCH tier if needed (see BSIC Planning) |
 | Beam width (°) | 65 | Half-power beam width used for overlap scoring |
 | NCC pool | 0-7 | Allowed NCC values (accepts ranges and lists, e.g. `2,4,6` or `0-7`) |
 | Max external neighbours | 10 | Maximum neighbours per sector in the export (intra-site always included) |
@@ -86,19 +86,19 @@ Lower score = higher priority. Cells with **both** fwdS ≤ 5% and revS ≤ 5% a
 
 ## BCCH Planning
 
-BCCH selection uses a **four-pass cascade** with progressively relaxed constraints. Within each pass, candidates are ordered by maximum frequency separation from all neighbours in the search radius; ties are broken randomly to spread load.
+BCCH selection uses a **four-pass cascade** with progressively relaxed constraints.
 
 | Pass | Mode label | Blocked BCCHs |
 |------|-----------|---------------|
 | 1 | `clean` | Intra-site ±1, all T1 BCCHs, all T2 BCCHs |
 | 2 | `t2_reuse` | Intra-site ±1, all T1 BCCHs (T2 reuse allowed) |
-| 3 | `t1_reuse` | Intra-site ±1 only (T1+T2 reuse allowed; BSIC guard applies) |
+| 3 | `t1_reuse` | Intra-site ±1 only (T1+T2 reuse allowed) |
 | 4 | `forced` | Nothing blocked (pool exhausted) |
 | — | `impossible` | Every BCCH in the configured pool is already used by another planned sector |
 
-**Global BCCH uniqueness:** no two planned sectors may ever share the same BCCH. This is enforced globally across all sites in all planning passes — even `forced` mode never assigns a BCCH already allocated to another sector. If the pool is exhausted, `bcchMode = impossible` is reported rather than silently duplicating.
+**Blended candidate scoring:** within each pass, BCCH candidates are ranked by `sep × (1 − worstOverlap)`, where `sep` is the minimum ARFCN distance to any neighbour's BCCH and `worstOverlap` is the highest beam overlap (max of fwdS and revS) across all neighbour cells that share that BCCH. A free BCCH (not used by any neighbour) scores purely on separation; a reused BCCH is penalised proportionally to its worst-case geometric conflict. Ties are broken randomly to spread load across equivalent candidates.
 
-**BSIC+BCCH uniqueness** is enforced jointly — BCCH and NCC/BCC are selected together so that no cell within `bsicRadius` shares the same (BCCH, NCC, BCC) triplet. If no valid triplet exists at the full radius, the radius is reduced by **80%** and all passes are retried (`50 km → 40 km → 32 km → ...`). This continues until the radius drops below 1 km, after which the least-conflicting combination is used as absolute last resort.
+**Global BCCH uniqueness:** no two planned sectors may ever share the same BCCH. This is enforced globally across all sites in all planning passes — even `forced` mode never assigns a BCCH already allocated to another sector. If the pool is exhausted, `bcchMode = impossible` is reported rather than silently duplicating.
 
 **Intra-site adjacency:** the intra-site blocked set includes not just exact BCCH values of other sectors but also their ±1 adjacent ARFCNs, to prevent BCCH–TCH adjacent channel interference within the same site.
 
@@ -110,15 +110,21 @@ BSIC = NCC × 8 + BCC (6-bit value, range 0–63).
 
 - NCC is selected from the configured **NCC pool** (default 0–7).
 - BCC is selected from 0–7.
-- Both are chosen **jointly with BCCH** (see above) to guarantee the (BCCH, NCC, BCC) triplet is unique within `bsicRadius`.
+- Both are chosen **jointly with BCCH** to guarantee the `(BCCH, NCC, BCC)` triplet is unique within `bsicRadius`.
 - Selection order within NCC pool and BCC range is **randomised per sector** to avoid systematic low-value bias.
-- After selection, the **actual minimum repeat distance** is computed — the nearest existing or previously-planned cell that shares the same `(BCCH, NCC, BCC)` triplet. This is displayed in the results table ("BSIC sep" column), in the BSIC detail card ("Min BSIC+BCCH repeat dist"), and exported as `BSIC_Repeat_km`. A blank / ∞ means the triplet is fully unique across the entire working network. Values below 10 km are highlighted in amber as a quality flag.
+
+**BCCH tier takes absolute priority over BSIC uniqueness radius.** For each BCCH tier (clean → t2_reuse → t1_reuse → forced), the planner searches for a free `(NCC, BCC)` slot at the configured `bsicRadius`. If none is found, the radius is reduced by **80%** and retried (`50 km → 40 km → 32 km → …`) — *still within the same BCCH tier*. Only when no BCCH in the current tier can achieve BSIC uniqueness at any radius does the planner fall to the next (worse) BCCH tier. This means BCCH cleanliness is never sacrificed just to maintain a larger BSIC repeat distance.
+
+After selection, the **actual minimum repeat distance** is computed — the nearest existing or previously-planned cell that shares the same `(BCCH, NCC, BCC)` triplet. This is displayed in:
+- **Results table:** "BSIC sep" column — km or ∞ if fully unique; values < 10 km highlighted in amber.
+- **BSIC detail card:** "Min BSIC+BCCH repeat dist" tile below NCC/BCC.
+- **Excel export:** `BSIC_Repeat_km` column in Sheet 1 (blank = fully unique).
 
 ---
 
 ## TCH Planning
 
-TCH selection uses a **five-pass cascade** per sector. Each pass tries a progressively relaxed set of constraints:
+TCH selection uses a **six-pass cascade** per sector. Each pass tries a progressively relaxed set of constraints:
 
 | Pass | Mode label | NB conflict | Intra-site BCCH adj | Intra-site TCH exact reuse | Intra-site TCH adj |
 |------|-----------|-------------|--------------------|--------------------------|--------------------|
@@ -136,9 +142,9 @@ TCH selection uses a **five-pass cascade** per sector. Each pass tries a progres
 
 **BCCH–TCH adjacency within a site:** the intra-site BCCH set used to filter TCH candidates is expanded to ±1, so no TCH of any sector at the same site can be adjacent to any BCCH of any other sector at that site.
 
-**Round-robin assignment across sectors:** instead of assigning all TCHs to S1 then all to S2 then S3, the planner assigns one TCH per sector per band in rotation (S1 → S2 → S3 → S1 → S2 → S3 …). Each pick is made with full awareness of all other sectors' already-committed TCHs, preventing the first sector from occupying both ends of the pool and forcing later sectors into adjacent slots.
+**Round-robin assignment across sectors:** instead of assigning all TCHs to S1 then all to S2 then S3, the planner assigns one TCH per sector per band in rotation. The sector order within each round is **shuffled randomly** so no single sector always gets first pick of the clean pool. Each pick is made with full awareness of all other sectors' already-committed TCHs.
 
-**Optimal sibling-aware selection:** within each pass, the planner tries all valid combinations (up to a combinatorial limit) and picks the one that **minimises the minimum distance to any sibling sector's already-committed TCHs** — i.e. clusters this sector's TCHs *as close as possible* to its siblings (still respecting the pass constraints). This keeps all of one site's TCHs in a tight contiguous block and leaves the far end of the pool free for other sites, maximising contiguous free space globally. Tie-break: minimise internal spread. When no siblings have been committed yet, the first sector picks a tight cluster at the low end of the pool.
+**Uniform random TCH selection:** within each pass, the planner enumerates all valid combinations of the required number of TCHs (respecting the minSep ≥ 2 constraint) and picks one **uniformly at random** using reservoir sampling. This gives every valid combination an equal probability, avoiding any bias toward low or high ARFCNs. When the combination count exceeds 60 000, a randomised spread-select heuristic is used instead (random rotation of the pool, greedy selection).
 
 **Co-site existing sector awareness:** when planning a new sector on an already-existing site (detected by co-location within 0.05 km), the existing sectors' BCCHs and TCHs are pre-loaded into the intra-site register. The new sector therefore avoids conflicts and adjacency with them exactly as it would with other newly planned sectors of the same site.
 
@@ -205,35 +211,58 @@ Both sheets have **blue headers** (frozen below row 1) and **freeze panes** afte
 ## Technical Notes
 
 - **No server, no install** — pure client-side HTML/JS. Double-click to open in any browser.
-- **Dependencies loaded from CDN** (internet required on first load): React 18, Babel standalone, xlsx-js-style.
-- **Offline fallback:** download the four JS files and reference them locally — see the comment block in `<head>`.
-- **Randomisation:** NCC, BCC, and BCCH tie-breaking are randomised per sector to avoid systematic low-value bias.
+- **Online version** (`2G-new-Site-planning.html`): loads React, Babel, and xlsx-js-style from CDN — internet required on first load.
+- **Offline version** (`index_offline.html`): all JS libraries bundled locally in `libs/` — works without internet. Leaflet map still requires internet for tile rendering.
+- **Randomisation:** NCC, BCC, BCC order, BCCH tie-breaking, sector round-robin order, and TCH combination selection are all randomised per planning run to avoid systematic bias and produce varied-but-valid results across multiple runs.
 - **Multi-pass Jacobi iteration:** sites are first planned sequentially (pass 1). In passes 2+, each site is re-planned using all *other* sites' frequencies from the previous pass as constraints — so no site is permanently disadvantaged by planning order. The best-scoring pass (fewest degraded BCCH sectors, then fewest T1 BCCH conflicts) is returned. Configurable via the `Planning passes` parameter (default 3).
+- **Pass 2+ site locking:** sites that achieved a fully `clean` BCCH assignment in the previous pass AND have no other planned site as a T1/T2 neighbour are locked and skipped in subsequent passes. Their planning environment cannot change, so re-running would produce identical results. This significantly reduces computation time for large batches.
+- **Live progress bar:** during planning the Plan button is replaced by a progress bar showing current pass, site count, locked site count, and overall percentage. The event loop is yielded between sites so the UI stays responsive throughout.
 - **Badge accuracy:** after all sectors of a site are planned, a post-processing step upgrades any sector's TCH mode badge to `~ x-sector adj` if a sibling sector's TCH is adjacent (±1), regardless of which sector was planned first.
 
 ---
 
 ## Changelog
 
+### 2026-05-04 (update 2)
+
+#### Fix: BCCH tier takes absolute priority over BSIC uniqueness radius
+Previously the BSIC search loop iterated **radius-first, tier-second**: at each radius level it tried all BCCH tiers in order and stopped on the first hit. In a dense network where all 64 NCC×BCC combinations for every `t2_reuse` BCCH candidate were exhausted at 50 km, the algorithm would accept a `t1_reuse` BCCH simply because that tier happened to have a free BSIC slot at 50 km — even though the `t2_reuse` candidate would have worked at 40 km.
+
+New order: **tier-first, radius-second**. For each BCCH tier the BSIC uniqueness radius shrinks independently (50 km → 40 km → 32 km → …) before falling to the next (worse) BCCH tier. BCCH cleanliness is never sacrificed just to maintain a larger BSIC repeat distance — only NCC/BCC adjust to fit within whatever radius is achievable.
+
+#### Live progress bar during planning
+Large batches previously blocked the browser event loop, making the page appear frozen. The planning engine is now async: it yields to the browser between each site, allowing React to redraw a live progress bar showing `Pass N/M · site X/Y · K locked ⚡ · XX%`. The Back button is disabled while planning is in progress.
+
+#### Multi-pass site locking
+Sites that achieved a `clean` BCCH in the previous pass and have no other planned site as a neighbour are locked and copied directly in passes 2+, skipping the expensive `planOneSite` call. The progress bar shows the locked count so it is clear how many sites are being fast-copied.
+
+#### Uniform random TCH selection (reservoir sampling)
+`optimalTCHSelect()` previously biased selection toward combinations that minimised distance to sibling sectors' committed TCHs. It now uses **reservoir sampling** (`seen++; if (Math.random() < 1/seen) choose current`) to give every valid combination — all subsets of size `count` from the eligible pool that satisfy the minSep ≥ 2 constraint — an exactly equal probability. This removes all distance/spread bias. The large-combination fallback (`spreadSelect`) similarly starts from a random position in the pool rather than a fixed midpoint.
+
+#### Blended BCCH candidate scoring
+BCCH candidates were previously sorted purely by frequency separation from neighbours. They are now ranked by `sep × (1 − worstOverlap)`, where `worstOverlap = max(fwdS, revS)` across all neighbour cells sharing that BCCH. A free BCCH scores the same as before; a reused BCCH is down-weighted proportionally to its worst-case geometric conflict. This makes the planning *more likely* to avoid high-overlap reuse without forcing it — frequency separation still dominates when no geometric information is available.
+
+#### Round-robin sector order shuffle
+The sector order within each TCH round-robin round is now shuffled randomly, so no single sector always gets first pick of the clean pool across all rounds.
+
+#### 1800-only cell BCCH exclusion in TCH planning
+For 1800-only cells (no 900-band TRX), the BCCH is on the 1800 band. The intra-site BCCH set (`inSiteBCCHSet`) is now correctly passed to the 1800-band TCH planner for these cells, preventing any 1800 TCH from being adjacent to the 1800 BCCH. For dual-band cells the 900 BCCH set is irrelevant to 1800-band ARFCNs and is no longer passed unnecessarily.
+
+---
+
 ### 2026-05-04
 
 #### Intra-site frequency uniqueness (BCCH + TCH)
 No two sectors of the same site may ever be allocated the same BCCH or the same TCH frequency. Adjacent (±1) is still allowed.
 
-- **BCCH:** introduced `inSiteExact` — a set of exact BCCHs already assigned to sibling sectors within the same `planOneSite` call. All four BCCH cascade passes (including `forced`) now filter against `inSiteExact`, so a sibling's BCCH can never be reused even if the BSIC differs (NCC/BCC uniqueness alone is insufficient — the raw BCCH must also be unique within the site). The absolute last-resort fallback similarly filters against `inSiteExact` and reports `bcchMode = impossible` only if the pool is truly exhausted.
-- **TCH:** `poolE` (last-resort TCH pool, previously only guarded by intra-site BCCH adjacency) now also excludes `otherSectorTCH`, preventing exact intra-site TCH reuse even when all softer constraints are relaxed.
-
-#### TCH cluster-close sibling selection
-`optimalTCHSelect()` now **minimises** the gap to sibling sectors' already-committed TCHs (previously it maximised). This clusters all sectors of a site into a tight contiguous block of ARFCNs, leaving the far end of the pool free for other allocations and maximising globally available contiguous space. Tiebreak: minimise internal spread. When no siblings have been committed yet, minimise spread so the first sector takes a compact block.
+- **BCCH:** introduced `inSiteExact` — a set of exact BCCHs already assigned to sibling sectors within the same `planOneSite` call. All four BCCH cascade passes (including `forced`) now filter against `inSiteExact`, so a sibling's BCCH can never be reused even if the BSIC differs. The absolute last-resort fallback similarly filters against `inSiteExact` and reports `bcchMode = impossible` only if the pool is truly exhausted.
+- **TCH:** `poolE` (last-resort TCH pool) now also excludes `otherSectorTCH`, preventing exact intra-site TCH reuse even when all softer constraints are relaxed.
 
 #### BSIC+BCCH minimum repeat distance
-After the `(BCCH, NCC, BCC)` triplet is selected for each sector, the planner computes the **actual nearest repeat distance** — the haversine distance to the closest cell in the working network that carries the identical triplet. Reported in three places:
-- **Results table:** "BSIC sep" column — shows distance in km or ∞ if fully unique; values < 10 km shown in amber.
-- **BSIC detail card:** "Min BSIC+BCCH repeat dist" tile below NCC/BCC.
-- **Excel export:** `BSIC_Repeat_km` column in Sheet 1 (blank = fully unique).
+After the `(BCCH, NCC, BCC)` triplet is selected for each sector, the planner computes the **actual nearest repeat distance** — the haversine distance to the closest cell in the working network that carries the identical triplet. Reported in three places: results table ("BSIC sep"), BSIC detail card ("Min BSIC+BCCH repeat dist"), and Excel export (`BSIC_Repeat_km`).
 
 #### Tier fine-tuning shadow check — beamWidth/3 bearing bucket
 The angular window used to determine whether two cells are "in the same direction" from the planned site was widened from `beamWidth/4` to `beamWidth/3`. This reduces false shadow demotion of cells that are meaningfully separated in bearing while still suppressing back-ring candidates that are truly co-directional.
 
 #### Neighbour ranking — zero-overlap cells ranked last
-Cells with **both** `fwdS ≤ 5%` and `revS ≤ 5%` (no meaningful beam overlap in either direction) are always ranked after any cell that has overlap on at least one side, regardless of distance. This two-bucket sort ensures pure proximity doesn't promote radio-dark cells above partially-overlapping ones.
+Cells with **both** `fwdS ≤ 5%` and `revS ≤ 5%` are always ranked after any cell that has overlap on at least one side, regardless of distance.
