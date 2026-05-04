@@ -324,13 +324,9 @@ function spreadSelect(pool, count, minSep=1) {
 }
 
 // ── TCH planner (shared for 900 and 1800) ────────────────────────────────────
-function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, globalForbidTCH) {
-  globalForbidTCH = globalForbidTCH || new Set();
+function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count) {
   // siteRegTCH = TCHs already assigned to OTHER sectors of this site (not this sector)
   if (!count || !tchPool.length) return {list:[], mode:"n/a"};
-  // Strip globally-used TCHs before any pool operations — no duplicate ever
-  tchPool = tchPool.filter(a => !globalForbidTCH.has(a));
-  if (!tchPool.length) return {list:[], mode:"impossible"};
   tchPool = shuffle(tchPool); // randomize starting point to avoid low-ARFCN bias
   const tchPoolSet = new Set(tchPool);
 
@@ -365,8 +361,8 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, globalForbid
   const poolC = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a) && !otherSectorAdj.has(a));
   // poolD: nb conflict OK, intra-site adj OK, but no exact intra-site TCH reuse
   const poolD = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
-  // poolE: last resort — only hard rule is no intra-site BCCH adjacency
-  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a));
+  // poolE: last resort — relaxes nb conflict and intra-site adj, but still never reuses a sibling sector's exact TCH
+  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
 
   list = optimalTCHSelect(poolA, count, 2, siteRegTCH);
   if (list.length >= count) { mode="clean"; }
@@ -403,8 +399,7 @@ function cellOverlap(la1,lo1,az1,la2,lo2,az2,bw) {
 }
 
 // ── Planning engine ───────────────────────────────────────────────────────────
-function planOneSite(site, workingCells, cfg, globalForbid) {
-  globalForbid = globalForbid || {bcch: new Set(), tch900: new Set(), tch1800: new Set()};
+function planOneSite(site, workingCells, cfg) {
   const {lat,lon,sectors}=site;
   const {firstTierRadius,nccStr,bands,beamWidth}=cfg;
   const nccPool=parseARFCNList(nccStr||"0-7").filter(n=>n>=0&&n<=7);
@@ -606,17 +601,21 @@ function planOneSite(site, workingCells, cfg, globalForbid) {
     const tier2BCCHs = new Set(effectiveTier2.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
     const inSiteAdj = new Set(); siteReg.bcch.forEach(b => { inSiteAdj.add(b-1); inSiteAdj.add(b); inSiteAdj.add(b+1); });
 
+    // inSiteExact: exact BCCHs already assigned to sibling sectors — must never be reused,
+    // even in forced mode (forced only relaxes neighbour constraints, not intra-site uniqueness).
+    const inSiteExact = new Set(siteReg.bcch);
+
     // Build ordered BCCH candidates per beam-overlap pass (best separation first, random tiebreak).
-    // globalForbid.bcch is always excluded — no two planned sectors may share the same BCCH.
     const bcchCands = blocked => bcchPool
-      .filter(a => !blocked.has(a) && !globalForbid.bcch.has(a))
+      .filter(a => !blocked.has(a) && !inSiteExact.has(a))
       .map(a => ({ a, sep: allNbBCCHs.length ? Math.min(...allNbBCCHs.map(u => Math.abs(a - u))) : 9999 }))
       .sort((x, y) => y.sep - x.sep || Math.random() - 0.5);
     const passes = [
       { mode:"clean",    cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs, ...tier2BCCHs])) },
       { mode:"t2_reuse", cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs])) },
       { mode:"t1_reuse", cands: bcchCands(inSiteAdj) },
-      { mode:"forced",   cands: bcchPool.filter(a => !globalForbid.bcch.has(a)).map(a => ({ a, sep:0 })) },
+      // forced: relaxes all neighbour constraints but still bans exact intra-site BCCH reuse
+      { mode:"forced",   cands: bcchPool.filter(a => !inSiteExact.has(a)).map(a => ({ a, sep:0 })) },
     ];
 
     // Pre-compute distances once for all workingCells with valid BCCH+NCC+BCC
@@ -651,18 +650,18 @@ function planOneSite(site, workingCells, cfg, globalForbid) {
       bsicSearchR *= 0.8;
     }
     if (bestBCCH === null) {
-      // Shrinking-radius BSIC uniqueness loop exhausted — try absolute last resort.
-      // Still honour the global no-duplicate rule: pick from pool entries not globally used.
-      const freePool = bcchPool.filter(a => !globalForbid.bcch.has(a));
+      // Shrinking-radius BSIC uniqueness loop exhausted — absolute last resort.
+      // Still never reuse a sibling sector's exact BCCH; ignore all other constraints.
+      const freePool = bcchPool.filter(a => !inSiteExact.has(a));
       if (freePool.length) {
         bcchMode = "forced";
-        bestBCCH = freePool.find(a => !siteReg.bcch.includes(a)) ?? freePool[0];
+        bestBCCH = freePool[0];
         bestNCC = nccPool[0] ?? 0;
         const cnt = Array(8).fill(0);
         bsicPool.forEach(c => cnt[c.bcc]++);
         bestBCC = cnt.indexOf(Math.min(...cnt));
       } else {
-        // Truly impossible — every BCCH in the pool is already allocated to another planned sector
+        // Truly impossible — all BCCHs in the pool are already used by sibling sectors of this site
         bcchMode = "impossible";
         bestBCCH = null; bestNCC = null; bestBCC = null;
       }
@@ -727,12 +726,12 @@ function planOneSite(site, workingCells, cfg, globalForbid) {
     for (let i=0; i<sectorResults.length; i++) {
       const s = sectorResults[i];
       if (acc900[i].list.length < s.tch900Count) {
-        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1, globalForbid.tch900);
+        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1);
         acc900[i].list.push(...list);
         acc900[i].mode = worseMode(acc900[i].mode, mode);
       }
       if (acc1800[i].list.length < s.tch1800Count) {
-        const {list,mode} = planTCH(s._tch1800Pool, s._scored, new Set(), siteReg.tch1800, 1, globalForbid.tch1800);
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, new Set(), siteReg.tch1800, 1);
         acc1800[i].list.push(...list);
         acc1800[i].mode = worseMode(acc1800[i].mode, mode);
       }
@@ -795,24 +794,13 @@ function planAllSites(sites,baseCells,cfg) {
   const isBetter = (scoreA, scoreB) =>
     scoreA[0] < scoreB[0] || (scoreA[0] === scoreB[0] && scoreA[1] < scoreB[1]);
 
-  // Helper: update globalUsed from a site's sector results
-  const updateGlobalUsed = (globalUsed, sectorResults) => {
-    sectorResults.forEach(r => {
-      if (r.bcch != null) globalUsed.bcch.add(r.bcch);
-      r.tch900List.forEach(t => globalUsed.tch900.add(t));
-      r.tch1800List.forEach(t => globalUsed.tch1800.add(t));
-    });
-  };
-
-  // Pass 1: sequential greedy — each site sees prior sites' allocations in both wc and globalUsed
+  // Pass 1: sequential greedy
   let lastResults = [];
   {
     let wc = [...baseCells];
-    const globalUsed = {bcch: new Set(), tch900: new Set(), tch1800: new Set()};
     lastResults = sites.map(site => {
-      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg, globalUsed);
+      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
       sectorResults.forEach(r => wc.push(toVCell(site, r)));
-      updateGlobalUsed(globalUsed, sectorResults);
       return {site, sectorResults};
     });
   }
@@ -821,26 +809,21 @@ function planAllSites(sites,baseCells,cfg) {
   let bestScore = scorePass(lastResults);
 
   // Passes 2..N: Jacobi iteration — each site re-planned using all OTHER sites'
-  // frequencies from the previous pass. Within each pass sites are still processed
-  // sequentially so the globalUsed set grows and prevents cross-site duplicates.
-  // Keep the best-scoring pass, not just the last.
+  // frequencies from the previous pass. Keep the best-scoring pass, not just the last.
   for (let pass = 2; pass <= maxPasses; pass++) {
     const prevVCells = {};
     lastResults.forEach(({site, sectorResults}) => {
       prevVCells[site.name] = sectorResults.map(r => toVCell(site, r));
     });
 
-    const globalUsed = {bcch: new Set(), tch900: new Set(), tch1800: new Set()};
-    const nextResults = [];
-    for (const site of sites) {
+    const nextResults = sites.map(site => {
       const wc = [...baseCells];
       sites.forEach(s => {
         if (s.name !== site.name) (prevVCells[s.name] || []).forEach(vc => wc.push(vc));
       });
-      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg, globalUsed);
-      updateGlobalUsed(globalUsed, sectorResults);
-      nextResults.push({site, sectorResults});
-    }
+      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
+      return {site, sectorResults};
+    });
 
     lastResults = nextResults;
     const s = scorePass(nextResults);
