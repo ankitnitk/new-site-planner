@@ -94,6 +94,9 @@ BCCH selection uses a **four-pass cascade** with progressively relaxed constrain
 | 2 | `t2_reuse` | Intra-site ±1, all T1 BCCHs (T2 reuse allowed) |
 | 3 | `t1_reuse` | Intra-site ±1 only (T1+T2 reuse allowed; BSIC guard applies) |
 | 4 | `forced` | Nothing blocked (pool exhausted) |
+| — | `impossible` | Every BCCH in the configured pool is already used by another planned sector |
+
+**Global BCCH uniqueness:** no two planned sectors may ever share the same BCCH. This is enforced globally across all sites in all planning passes — even `forced` mode never assigns a BCCH already allocated to another sector. If the pool is exhausted, `bcchMode = impossible` is reported rather than silently duplicating.
 
 **BSIC+BCCH uniqueness** is enforced jointly — BCCH and NCC/BCC are selected together so that no cell within `bsicRadius` shares the same (BCCH, NCC, BCC) triplet. If no valid triplet exists at the full radius, the radius is reduced by **80%** and all passes are retried (`50 km → 40 km → 32 km → ...`). This continues until the radius drops below 1 km, after which the least-conflicting combination is used as absolute last resort.
 
@@ -123,6 +126,9 @@ TCH selection uses a **five-pass cascade** per sector. Each pass tries a progres
 | 3 | `nb_reuse` | ✓ allowed | ✗ avoided | ✗ avoided | ✗ avoided |
 | 4 | `nb_reuse_adj` | ✓ allowed | ✗ avoided | ✗ avoided | ✓ allowed |
 | 5 | `reuse` | ✓ allowed | ✗ avoided | ✓ allowed | ✓ allowed |
+| — | `impossible` | Every ARFCN in the configured pool for this band is already used by another planned sector |
+
+**Global TCH uniqueness:** no two planned sectors may ever share the same TCH frequency. This constraint is enforced before any pool filtering — globally used ARFCNs are stripped from the pool at the start of each `planTCH` call, regardless of which pass is active. Adjacent ARFCNs (±1) to other sectors' TCHs are still allowed. If the band pool is fully exhausted by other sectors, `tch900Mode` / `tch1800Mode` = `impossible` is reported.
 
 **Intra-sector adjacency (minSep = 2) is never relaxed** — two ARFCNs within the same cell must always differ by at least 2 to avoid adjacent channel interference (ACI) within the TRX chain.
 
@@ -130,7 +136,7 @@ TCH selection uses a **five-pass cascade** per sector. Each pass tries a progres
 
 **Round-robin assignment across sectors:** instead of assigning all TCHs to S1 then all to S2 then S3, the planner assigns one TCH per sector per band in rotation (S1 → S2 → S3 → S1 → S2 → S3 …). Each pick is made with full awareness of all other sectors' already-committed TCHs, preventing the first sector from occupying both ends of the pool and forcing later sectors into adjacent slots.
 
-**Optimal sibling-aware selection:** within each pass, the planner tries all valid combinations (up to a combinatorial limit) and picks the one that **maximises the minimum distance to any sibling sector's already-committed TCHs**. Tie-break: maximise internal spread. This clusters each sector's TCHs away from its siblings, minimising cross-sector adjacency.
+**Optimal sibling-aware selection:** within each pass, the planner tries all valid combinations (up to a combinatorial limit) and picks the one that **minimises the minimum distance to any sibling sector's already-committed TCHs** — i.e. clusters this sector's TCHs *as close as possible* to its siblings (still respecting the pass constraints). This keeps all of one site's TCHs in a tight contiguous block and leaves the far end of the pool free for other sites, maximising contiguous free space globally. Tie-break: minimise internal spread. When no siblings have been committed yet, the first sector picks a tight cluster at the low end of the pool.
 
 **Co-site existing sector awareness:** when planning a new sector on an already-existing site (detected by co-location within 0.05 km), the existing sectors' BCCHs and TCHs are pre-loaded into the intra-site register. The new sector therefore avoids conflicts and adjacency with them exactly as it would with other newly planned sectors of the same site.
 
