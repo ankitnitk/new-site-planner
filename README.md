@@ -207,3 +207,30 @@ Both sheets have **blue headers** (frozen below row 1) and **freeze panes** afte
 - **Randomisation:** NCC, BCC, and BCCH tie-breaking are randomised per sector to avoid systematic low-value bias.
 - **Multi-pass Jacobi iteration:** sites are first planned sequentially (pass 1). In passes 2+, each site is re-planned using all *other* sites' frequencies from the previous pass as constraints — so no site is permanently disadvantaged by planning order. The best-scoring pass (fewest degraded BCCH sectors, then fewest T1 BCCH conflicts) is returned. Configurable via the `Planning passes` parameter (default 3).
 - **Badge accuracy:** after all sectors of a site are planned, a post-processing step upgrades any sector's TCH mode badge to `~ x-sector adj` if a sibling sector's TCH is adjacent (±1), regardless of which sector was planned first.
+
+---
+
+## Changelog
+
+### 2026-05-04
+
+#### Intra-site frequency uniqueness (BCCH + TCH)
+No two sectors of the same site may ever be allocated the same BCCH or the same TCH frequency. Adjacent (±1) is still allowed.
+
+- **BCCH:** introduced `inSiteExact` — a set of exact BCCHs already assigned to sibling sectors within the same `planOneSite` call. All four BCCH cascade passes (including `forced`) now filter against `inSiteExact`, so a sibling's BCCH can never be reused even if the BSIC differs (NCC/BCC uniqueness alone is insufficient — the raw BCCH must also be unique within the site). The absolute last-resort fallback similarly filters against `inSiteExact` and reports `bcchMode = impossible` only if the pool is truly exhausted.
+- **TCH:** `poolE` (last-resort TCH pool, previously only guarded by intra-site BCCH adjacency) now also excludes `otherSectorTCH`, preventing exact intra-site TCH reuse even when all softer constraints are relaxed.
+
+#### TCH cluster-close sibling selection
+`optimalTCHSelect()` now **minimises** the gap to sibling sectors' already-committed TCHs (previously it maximised). This clusters all sectors of a site into a tight contiguous block of ARFCNs, leaving the far end of the pool free for other allocations and maximising globally available contiguous space. Tiebreak: minimise internal spread. When no siblings have been committed yet, minimise spread so the first sector takes a compact block.
+
+#### BSIC+BCCH minimum repeat distance
+After the `(BCCH, NCC, BCC)` triplet is selected for each sector, the planner computes the **actual nearest repeat distance** — the haversine distance to the closest cell in the working network that carries the identical triplet. Reported in three places:
+- **Results table:** "BSIC sep" column — shows distance in km or ∞ if fully unique; values < 10 km shown in amber.
+- **BSIC detail card:** "Min BSIC+BCCH repeat dist" tile below NCC/BCC.
+- **Excel export:** `BSIC_Repeat_km` column in Sheet 1 (blank = fully unique).
+
+#### Tier fine-tuning shadow check — beamWidth/3 bearing bucket
+The angular window used to determine whether two cells are "in the same direction" from the planned site was widened from `beamWidth/4` to `beamWidth/3`. This reduces false shadow demotion of cells that are meaningfully separated in bearing while still suppressing back-ring candidates that are truly co-directional.
+
+#### Neighbour ranking — zero-overlap cells ranked last
+Cells with **both** `fwdS ≤ 5%` and `revS ≤ 5%` (no meaningful beam overlap in either direction) are always ranked after any cell that has overlap on at least one side, regardless of distance. This two-bucket sort ensures pure proximity doesn't promote radio-dark cells above partially-overlapping ones.
