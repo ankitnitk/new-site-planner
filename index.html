@@ -678,6 +678,13 @@ function planOneSite(site, workingCells, cfg) {
     }
     if (bestBCCH !== null) siteReg.bcch.push(bestBCCH);
 
+    // Compute the actual minimum distance to any cell sharing the same (BCCH, NCC, BCC) triplet.
+    // This is the true "BSIC+BCCH repeat distance" — null means fully unique in the working network.
+    const bsicRepeatDist = (bestBCCH == null || bestNCC == null || bestBCC == null) ? null : (() => {
+      const matches = bsicPool.filter(c => c.bcch === bestBCCH && c.ncc === bestNCC && c.bcc === bestBCC);
+      return matches.length === 0 ? null : Math.min(...matches.map(c => c.d));
+    })();
+
     const inSiteBCCHSet=new Set([...siteReg.bcch]);
 
     const makeNb = (c, tier) => ({
@@ -709,7 +716,10 @@ function planOneSite(site, workingCells, cfg) {
       bcch:bestBCCH, bcchMode,
       tch900List:[], tch900Mode:'n/a',
       tch1800List:[], tch1800Mode:'n/a',
-      ncc:bestNCC,bcc:bestBCC,bsic:`${bestNCC}/${bestBCC}`,bsicDec:bestNCC*8+bestBCC,
+      ncc:bestNCC,bcc:bestBCC,
+      bsic:bestNCC!=null?`${bestNCC}/${bestBCC}`:'—',
+      bsicDec:bestNCC!=null?bestNCC*8+bestBCC:null,
+      bsicRepeatDist,
       lac:siteLacRacBsc.lac,rac:siteLacRacBsc.rac,bsc:siteLacRacBsc.bsc,
       externalNeighbors,
       tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),
@@ -869,7 +879,8 @@ function exportAll(allResults) {
         TCH_1800_Mode: r.tch1800Mode,
         NCC: r.ncc,
         BCC: r.bcc,
-        BSIC: r.bsicDec,
+        BSIC: r.bsicDec ?? "",
+        BSIC_Repeat_km: r.bsicRepeatDist != null ? Math.round(r.bsicRepeatDist * 10) / 10 : "",
         LAC: r.lac ?? "",
         RAC: r.rac ?? "",
         BSC: r.bsc ?? "",
@@ -1603,7 +1614,7 @@ function FreqPlanner() {
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)"}}>
                     <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
-                      {["Sec","Az","T900/T1800","BCCH","BCCH","900 TCH","","1800 TCH","","BSIC","Dec"].map((h,i)=>(
+                      {["Sec","Az","T900/T1800","BCCH","BCCH","900 TCH","","1800 TCH","","BSIC","Dec","BSIC sep"].map((h,i)=>(
                         <th key={i} style={{padding:"5px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px",whiteSpace:"nowrap"}}>{h}</th>
                       ))}
                     </tr></thead>
@@ -1621,7 +1632,10 @@ function FreqPlanner() {
                           <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",fontFamily:"var(--font-mono)",fontSize:"11px"}}>{r.tch1800List.length?r.tch1800List.join(" "):"—"}</td>
                           <td style={{padding:"5px 8px"}}>{r.tch1800Count>0&&<ModeBadge mode={r.tch1800Mode}/>}</td>
                           <td style={{padding:"5px 8px",color:"var(--color-text-info)"}}>{r.bsic}</td>
-                          <td style={{padding:"5px 8px",color:"var(--color-text-tertiary)"}}>{r.bsicDec}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-tertiary)"}}>{r.bsicDec??'—'}</td>
+                          <td style={{padding:"5px 8px",color:r.bsicRepeatDist!=null&&r.bsicRepeatDist<10?"var(--color-text-warning)":"var(--color-text-tertiary)",whiteSpace:"nowrap"}}>
+                            {r.bsicRepeatDist!=null?`${r.bsicRepeatDist.toFixed(1)} km`:"∞"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1697,6 +1711,13 @@ function FreqPlanner() {
                               <div style={{fontFamily:"var(--font-mono)",fontSize:"18px",fontWeight:"500",color:"var(--color-text-info)"}}>{v}</div>
                             </div>
                           ))}
+                        </div>
+                        <div style={{marginTop:"10px",background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"8px 10px"}}>
+                          <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"}}>Min BSIC+BCCH repeat dist</div>
+                          <div style={{fontFamily:"var(--font-mono)",fontSize:"15px",fontWeight:"500",
+                            color:sec.bsicRepeatDist!=null&&sec.bsicRepeatDist<10?"var(--color-text-warning)":"var(--color-text-info)"}}>
+                            {sec.bsicRepeatDist!=null?`${sec.bsicRepeatDist.toFixed(1)} km`:"∞ unique"}
+                          </div>
                         </div>
                       </div>
                     </div>

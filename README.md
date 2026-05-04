@@ -112,6 +112,7 @@ BSIC = NCC × 8 + BCC (6-bit value, range 0–63).
 - BCC is selected from 0–7.
 - Both are chosen **jointly with BCCH** (see above) to guarantee the (BCCH, NCC, BCC) triplet is unique within `bsicRadius`.
 - Selection order within NCC pool and BCC range is **randomised per sector** to avoid systematic low-value bias.
+- After selection, the **actual minimum repeat distance** is computed — the nearest existing or previously-planned cell that shares the same `(BCCH, NCC, BCC)` triplet. This is displayed in the results table ("BSIC sep" column), in the BSIC detail card ("Min BSIC+BCCH repeat dist"), and exported as `BSIC_Repeat_km`. A blank / ∞ means the triplet is fully unique across the entire working network. Values below 10 km are highlighted in amber as a quality flag.
 
 ---
 
@@ -176,6 +177,7 @@ One row per planned sector.
 | TCH_900_Count, TCH_900, TCH_900_Mode | 900-band TCH list and quality |
 | TCH_1800_Count, TCH_1800, TCH_1800_Mode | 1800-band TCH list and quality |
 | NCC, BCC, BSIC | Planned BSIC (BSIC decimal = NCC×8 + BCC) |
+| BSIC_Repeat_km | Minimum distance (km) to the nearest existing or previously-planned cell sharing the exact same (BCCH, NCC, BCC) triplet; blank = fully unique in the working network |
 | LAC, RAC, BSC | Planned location/routing area and BSC |
 
 ### Sheet 2 — Neighbour Plan
