@@ -843,8 +843,12 @@ function planOneSite(site, workingCells, cfg) {
   return sectorResults;
 }
 
-function planAllSites(sites,baseCells,cfg) {
+// onProgress(pass, siteIdx, total, totalPasses, lockedCount)
+// Called just before each planOneSite to let the UI update the progress bar.
+async function planAllSites(sites,baseCells,cfg,onProgress) {
   const maxPasses = Math.max(1, cfg.maxPasses ?? 3);
+  // Yield to the browser so React can flush any pending state updates (progress bar redraws).
+  const yield_ = () => new Promise(r => setTimeout(r, 0));
 
   const toVCell = (site, r) => ({
     cellName:`${site.name}_S${r.idx+1}`, siteName:site.name,
@@ -873,11 +877,15 @@ function planAllSites(sites,baseCells,cfg) {
   let lastResults = [];
   {
     let wc = [...baseCells];
-    lastResults = sites.map(site => {
+    for (let i = 0; i < sites.length; i++) {
+      const site = sites[i];
+      onProgress && onProgress(1, i, sites.length, maxPasses, 0);
+      await yield_();
       const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
       sectorResults.forEach(r => wc.push(toVCell(site, r)));
-      return {site, sectorResults};
-    });
+      lastResults.push({site, sectorResults});
+    }
+    onProgress && onProgress(1, sites.length, sites.length, maxPasses, 0);
   }
 
   let bestResults = lastResults;
@@ -908,16 +916,25 @@ function planAllSites(sites,baseCells,cfg) {
         .map(({site}) => site.name)
     );
 
-    const nextResults = sites.map(site => {
-      // Locked site: planning environment unchanged, copy previous result as-is.
-      if (locked.has(site.name)) return lastResults.find(r => r.site.name === site.name);
+    const nextResults = [];
+    for (let i = 0; i < sites.length; i++) {
+      const site = sites[i];
+      if (locked.has(site.name)) {
+        // Locked: copy previous result without yielding (negligible cost, no UI stall)
+        nextResults.push(lastResults.find(r => r.site.name === site.name));
+        continue;
+      }
+      onProgress && onProgress(pass, i, sites.length, maxPasses, locked.size);
+      await yield_();
       const wc = [...baseCells];
       sites.forEach(s => {
         if (s.name !== site.name) (prevVCells[s.name] || []).forEach(vc => wc.push(vc));
       });
       const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
-      return {site, sectorResults};
-    });
+      nextResults.push({site, sectorResults});
+    }
+    onProgress && onProgress(pass, sites.length, sites.length, maxPasses, locked.size);
+    await yield_();
 
     lastResults = nextResults;
     const s = scorePass(nextResults);
@@ -1417,6 +1434,8 @@ function FreqPlanner() {
   const [activeTab,setActiveTab]=useState(0);
   const [showMap,setShowMap]=useState(false);
   const [err,setErr]=useState("");
+  const [planning,setPlanning]=useState(false);
+  const [planProgress,setPlanProgress]=useState({pass:1,site:0,total:0,totalPasses:1,locked:0});
 
   const updBand=(i,k,v)=>setCfg(c=>({...c,bands:c.bands.map((b,j)=>j===i?{...b,[k]:v}:b)}));
 
@@ -1455,12 +1474,21 @@ function FreqPlanner() {
     setErr("");setStep(2);
   };
 
-  const runPlan=()=>{
+  const runPlan=async()=>{
     for(const s of plannedSites){
       if(isNaN(parseFloat(s.lat))||isNaN(parseFloat(s.lon))){setErr(`Invalid coords for ${s.name}`);return;}
     }
-    const res=planAllSites(plannedSites,cells,cfg);
-    setResults(res);setActiveSite(0);setActiveTab(0);setErr("");setStep(3);
+    setErr("");
+    setPlanning(true);
+    setPlanProgress({pass:1,site:0,total:plannedSites.length,totalPasses:cfg.maxPasses,locked:0});
+    try {
+      const res=await planAllSites(plannedSites,cells,cfg,(pass,site,total,totalPasses,locked)=>{
+        setPlanProgress({pass,site,total,totalPasses,locked});
+      });
+      setResults(res);setActiveSite(0);setActiveTab(0);setStep(3);
+    } finally {
+      setPlanning(false);
+    }
   };
 
   const cur=results?.[activeSite];
@@ -1637,9 +1665,30 @@ function FreqPlanner() {
             Sites are planned in CSV order — each site's assignment is locked before the next one starts.
           </div>
 
-          <div style={{display:"flex",gap:"10px"}}>
-            <button onClick={()=>setStep(1)}>← Back</button>
-            <button className="primary" onClick={runPlan}>Plan {plannedSites.length} site{plannedSites.length>1?"s":""} →</button>
+          <div style={{display:"flex",gap:"10px",alignItems:"center",flexWrap:"wrap"}}>
+            <button onClick={()=>setStep(1)} disabled={planning}>← Back</button>
+            {planning?(()=>{
+              const totalWork=planProgress.totalPasses*planProgress.total;
+              const doneWork=(planProgress.pass-1)*planProgress.total+planProgress.site;
+              const pct=totalWork>0?Math.min(100,Math.round(doneWork/totalWork*100)):0;
+              return(
+                <div style={{flex:1,minWidth:"260px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:"var(--color-text-secondary)",marginBottom:"5px"}}>
+                    <span>
+                      Pass <b>{planProgress.pass}</b>/{planProgress.totalPasses}
+                      {planProgress.total>0&&<> · site {planProgress.site}/{planProgress.total}</>}
+                      {planProgress.locked>0&&<span style={{color:"var(--color-text-tertiary)"}}> · {planProgress.locked} locked ⚡</span>}
+                    </span>
+                    <span style={{fontFamily:"var(--font-mono)",color:"var(--color-text-tertiary)"}}>{pct}%</span>
+                  </div>
+                  <div style={{height:"6px",background:"var(--color-background-secondary)",borderRadius:"3px",overflow:"hidden",border:"0.5px solid var(--color-border-tertiary)"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:"var(--nokia-blue)",borderRadius:"3px",transition:"width 0.15s ease"}}/>
+                  </div>
+                </div>
+              );
+            })():(
+              <button className="primary" onClick={runPlan}>Plan {plannedSites.length} site{plannedSites.length>1?"s":""} →</button>
+            )}
           </div>
         </div>
       )}
