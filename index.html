@@ -322,8 +322,10 @@ function spreadSelect(pool, count, minSep=1) {
   // minSep=2 means no two selected freqs can be adjacent (strict intra-sector rule)
   if (!pool.length) return [];
   const eligible = (a, sel) => !sel.includes(a) && sel.every(s => Math.abs(a-s) >= minSep);
-  const midStart = pool[Math.floor(pool.length/2)];
-  const firstEligible = pool.find(a => eligible(a, [])) ?? pool[0];
+  // Start from a random position in the pool to avoid low-ARFCN bias in the fallback path.
+  const randomStart = Math.floor(Math.random() * pool.length);
+  const rotated = [...pool.slice(randomStart), ...pool.slice(0, randomStart)];
+  const firstEligible = rotated.find(a => eligible(a, [])) ?? pool[0];
   const sel = [firstEligible];
   while (sel.length < count) {
     let best=null, bd=-1;
@@ -352,7 +354,7 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTC
     tchPool = tchPool.filter(a => !sameSecExclude.has(a));
     if (!tchPool.length) return {list:[], mode:"impossible"};
   }
-  tchPool = shuffle(tchPool); // randomize starting point to avoid low-ARFCN bias
+  tchPool = shuffle(tchPool); // randomize pool order (benefits spreadSelect fallback; optimalTCHSelect re-sorts internally)
   const tchPoolSet = new Set(tchPool);
 
   // Expand inSiteBCCHSet to include ±1 — BCCH/TCH adjacency within same site must be avoided
@@ -775,7 +777,9 @@ function planOneSite(site, workingCells, cfg) {
   const acc1800 = sectorResults.map(() => ({list:[], mode:'clean'}));
 
   for (let round=0; round<maxRounds; round++) {
-    for (let i=0; i<sectorResults.length; i++) {
+    // Shuffle sector order each round so no single sector always gets first pick of the clean pool.
+    const sectorOrder = shuffle(sectorResults.map((_,i) => i));
+    for (const i of sectorOrder) {
       const s = sectorResults[i];
       if (acc900[i].list.length < s.tch900Count) {
         const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1, acc900[i].list);
@@ -783,7 +787,11 @@ function planOneSite(site, workingCells, cfg) {
         acc900[i].mode = worseMode(acc900[i].mode, mode);
       }
       if (acc1800[i].list.length < s.tch1800Count) {
-        const {list,mode} = planTCH(s._tch1800Pool, s._scored, new Set(), siteReg.tch1800, 1, acc1800[i].list);
+        // For 1800-only cells (no 900 band) the BCCH is on 1800 — pass inSiteBCCHSet so the
+        // planner avoids ±1 of the BCCH.  Dual-band cells have BCCH on 900 (different ARFCNs),
+        // so an empty set is correct and avoids unnecessary filtering.
+        const inSiteBCCHSet1800 = s.has900 ? new Set() : s._inSiteBCCHSet;
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, inSiteBCCHSet1800, siteReg.tch1800, 1, acc1800[i].list);
         acc1800[i].list.push(...list);
         acc1800[i].mode = worseMode(acc1800[i].mode, mode);
       }
@@ -802,7 +810,9 @@ function planOneSite(site, workingCells, cfg) {
   // Post-processing: if a sector ended up with 'clean' mode but one of its TCHs is
   // adjacent (±1) to a sibling sector's TCH, upgrade its mode to 'site_adj' so the
   // badge reflects the actual cross-sector adjacency regardless of planning order.
-  const CLEAN_MODES = new Set(['clean','partial','n/a']);
+  // Only 'clean' is checked — 'partial' already signals under-allocation and must not
+  // be silently overwritten with a different label.
+  const CLEAN_MODES = new Set(['clean']);
   sectorResults.forEach((sec, i) => {
     ['900','1800'].forEach(band => {
       const modeKey = `tch${band}Mode`;
