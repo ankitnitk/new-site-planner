@@ -263,11 +263,11 @@ function buildPlannedSites(rows, m) {
 }
 
 // ── Optimal TCH selection ─────────────────────────────────────────────────────
-// Tries all C(pool,count) combinations and picks the one that maximises the
-// minimum distance to any sibling-sector TCH already in siteRegTCH.
-// Tie-break: maximise internal spread (good for intra-sector ACI).
-// Falls back to spreadSelect when the combination space is too large.
-function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
+// Enumerates all C(pool,count) combinations that satisfy the minSep constraint
+// and returns one chosen uniformly at random using reservoir sampling — no ARFCN
+// ordering bias, no distance objective, every valid combo equally likely.
+// Falls back to spreadSelect when the combination space exceeds 60,000.
+function optimalTCHSelect(pool, count, minSep) {
   const sorted = [...new Set(pool)].sort((a,b)=>a-b);
   if (!sorted.length || !count) return [];
 
@@ -275,24 +275,14 @@ function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
   let cn=1; for(let i=0;i<count;i++) cn=cn*(sorted.length-i)/(i+1);
   if (cn > 60000) return spreadSelect(pool, count, minSep);
 
-  // Objective: cluster this sector's TCHs AS CLOSE AS POSSIBLE to sibling sectors' already-committed
-  // TCHs (while still respecting the pool's exclusion rules). This leaves the far end of the pool
-  // free for subsequent allocations, maximising contiguous free space globally.
-  // When no siblings exist yet (siteRegTCH empty), minimise internal spread — keeps the cluster tight.
-  // Among ALL combinations that tie on (dist, spread), one is chosen randomly to avoid systematic
-  // low-ARFCN bias (the sorted search order would otherwise always favour the lowest-valued cluster).
-  let bestCombos=[], bestDist=Infinity, bestSpread=Infinity;
-
+  // Reservoir sampling: as each valid combo is found (1-indexed at `seen`),
+  // replace the current choice with probability 1/seen.
+  // Result is a perfectly uniform random draw over all valid combos.
+  let chosen=null, seen=0;
   function search(start, sel) {
     if (sel.length === count) {
-      const dist = siteRegTCH.length === 0 ? 0
-        : Math.min(...sel.flatMap(s => siteRegTCH.map(r => Math.abs(s-r))));
-      const spread = sel[sel.length-1] - sel[0];
-      if (dist < bestDist || (dist === bestDist && spread < bestSpread)) {
-        bestDist=dist; bestSpread=spread; bestCombos=[[...sel]];
-      } else if (dist === bestDist && spread === bestSpread && bestCombos.length < 200) {
-        bestCombos.push([...sel]); // collect ties for random selection below
-      }
+      seen++;
+      if (Math.random() < 1/seen) chosen=[...sel];
       return;
     }
     if (sorted.length - start < count - sel.length) return; // prune
@@ -302,8 +292,7 @@ function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
     }
   }
   search(0, []);
-  if (!bestCombos.length) return [];
-  return bestCombos[Math.floor(Math.random() * bestCombos.length)];
+  return chosen ?? [];
 }
 
 // ── Spread selection ──────────────────────────────────────────────────────────
@@ -382,21 +371,21 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTC
   // poolF: last resort — exact reuse AND cross-sector adj both allowed; only BCCH adjacency still blocked
   const poolF = tchPool.filter(a => !inSiteBCCHAdj.has(a));
 
-  list = optimalTCHSelect(poolA, count, 2, siteRegTCH);
+  list = optimalTCHSelect(poolA, count, 2);
   if (list.length >= count) { mode="clean"; }
   else {
-    const listB = optimalTCHSelect(poolB, count, 2, siteRegTCH);
+    const listB = optimalTCHSelect(poolB, count, 2);
     if (listB.length >= list.length) { list=listB; mode=listB.length>=count?"site_adj":"partial"; }
     if (list.length < count) {
-      const listC = optimalTCHSelect(poolC, count, 2, siteRegTCH);
+      const listC = optimalTCHSelect(poolC, count, 2);
       if (listC.length > list.length) { list=listC; mode=listC.length>=count?"nb_reuse":"partial"; }
     }
     if (list.length < count) {
-      const listD = optimalTCHSelect(poolD, count, 2, siteRegTCH);
+      const listD = optimalTCHSelect(poolD, count, 2);
       if (listD.length > list.length) { list=listD; mode=listD.length>=count?"nb_reuse_adj":"partial"; }
     }
     if (list.length < count) {
-      const listE = optimalTCHSelect(poolE, count, 2, siteRegTCH);
+      const listE = optimalTCHSelect(poolE, count, 2);
       if (listE.length > list.length) { list=listE; mode=listE.length>=count?"site_reuse":"partial"; }
     }
     if (list.length < count) {
