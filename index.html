@@ -469,7 +469,18 @@ function planOneSite(site, workingCells, cfg) {
         if (fwdS > OVL_LRB || revS > OVL_LRB) pooled.push({...c, dist});
       });
     });
-    return majorityVote(pooled);
+    if (pooled.length) return majorityVote(pooled);
+
+    // Case 3: no T1 neighbours found — inherit from the nearest cell with LAC/RAC/BSC,
+    // regardless of search radius or beam overlap.
+    const nearest = workingCells
+      .filter(c => !isNaN(c.lat) && !isNaN(c.lon) &&
+                   haversineKm(lat,lon,c.lat,c.lon) >= 0.05 &&
+                   (c.lac != null || c.rac != null || c.bsc != null))
+      .map(c => ({...c, dist: haversineKm(lat,lon,c.lat,c.lon)}))
+      .sort((a,b) => a.dist - b.dist);
+    if (nearest.length) return {lac:nearest[0].lac, rac:nearest[0].rac, bsc:nearest[0].bsc};
+    return {lac:null, rac:null, bsc:null};
   })();
 
   const sectorResults = sectors.map((sec,idx)=>{

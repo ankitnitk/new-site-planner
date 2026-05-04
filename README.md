@@ -151,9 +151,11 @@ All sectors of the same planned site receive **identical** LAC, RAC, and BSC val
 
 1. **Existing site** (any GIS cell within 0.05 km of the planned location has LAC/RAC/BSC data) → inherit directly from those co-located cells (majority vote if multiple values present). Tier-1 neighbours are ignored.
 
-2. **New site** → pool the T1 neighbours of **all planned sectors combined**, then:
+2. **New site with T1 neighbours** → pool the T1 neighbours of **all planned sectors combined**, then:
    - Find the most frequent (LAC, RAC, BSC) combination.
    - Tie-break: the combination whose nearest representative cell is closest to the planned site wins.
+
+3. **New site with no T1 neighbours** (isolated site or all T1 candidates lack LAC/RAC/BSC) → inherit from the **nearest cell** in the working network that has LAC/RAC/BSC data, with no distance or beam-overlap constraint.
 
 LAC/RAC/BSC values are sourced from the CM Export / Summary sheet via the column mapping (auto-detected or manually selected).
 
