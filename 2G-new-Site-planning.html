@@ -638,11 +638,35 @@ function planOneSite(site, workingCells, cfg) {
     // even in forced mode (forced only relaxes neighbour constraints, not intra-site uniqueness).
     const inSiteExact = new Set(siteReg.bcch);
 
-    // Build ordered BCCH candidates per beam-overlap pass (best separation first, random tiebreak).
+    // For each 900-band BCCH used by any scored neighbour, record the worst-case beam overlap
+    // across all cells that share that BCCH (max of fwdS and revS per cell, then take the
+    // highest across all cells).  Used in candidate scoring below.
+    const bcchWorstOvl = new Map();
+    nb900.forEach(c => {
+      const b = Number(c.bcch);
+      const ovl = Math.max(c.fwdS || 0, c.revS || 0);
+      if (!bcchWorstOvl.has(b) || bcchWorstOvl.get(b) < ovl) bcchWorstOvl.set(b, ovl);
+    });
+
+    // Build ordered BCCH candidates per beam-overlap pass.
+    // Score = sep × (1 − worstOverlap):
+    //   • high frequency separation  → higher score  (same as before)
+    //   • low beam overlap of the cell(s) owning this BCCH → higher score  (new)
+    // Neither factor alone forces the selection — a free BCCH with moderate overlap
+    // can still beat a reused BCCH with near-zero overlap if its sep is large enough.
+    // Ties in the blended score are broken randomly to spread load.
     const bcchCands = blocked => bcchPool
       .filter(a => !blocked.has(a) && !inSiteExact.has(a))
-      .map(a => ({ a, sep: allNbBCCHs.length ? Math.min(...allNbBCCHs.map(u => Math.abs(a - u))) : 9999 }))
-      .sort((x, y) => y.sep - x.sep || Math.random() - 0.5);
+      .map(a => ({
+        a,
+        sep: allNbBCCHs.length ? Math.min(...allNbBCCHs.map(u => Math.abs(a - u))) : 9999,
+        ovl: bcchWorstOvl.get(a) ?? 0,
+      }))
+      .sort((x, y) => {
+        const sx = x.sep * (1 - x.ovl);
+        const sy = y.sep * (1 - y.ovl);
+        return sy - sx || Math.random() - 0.5;
+      });
     const passes = [
       { mode:"clean",    cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs, ...tier2BCCHs])) },
       { mode:"t2_reuse", cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs])) },
