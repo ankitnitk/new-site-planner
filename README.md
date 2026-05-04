@@ -126,7 +126,8 @@ TCH selection uses a **five-pass cascade** per sector. Each pass tries a progres
 | 2 | `site_adj` | ✗ avoided | ✗ avoided | ✗ avoided | ✓ allowed |
 | 3 | `nb_reuse` | ✓ allowed | ✗ avoided | ✗ avoided | ✗ avoided |
 | 4 | `nb_reuse_adj` | ✓ allowed | ✗ avoided | ✗ avoided | ✓ allowed |
-| 5 | `reuse` | ✓ allowed | ✗ avoided | ✓ allowed | ✓ allowed |
+| 5 | `site_reuse` | ✓ allowed | ✗ avoided | ✓ allowed | ✗ avoided |
+| 6 | `reuse` | ✓ allowed | ✗ avoided | ✓ allowed | ✓ allowed |
 | — | `impossible` | Every ARFCN in the configured pool for this band is already used by another planned sector |
 
 **Global TCH uniqueness:** no two planned sectors may ever share the same TCH frequency. This constraint is enforced before any pool filtering — globally used ARFCNs are stripped from the pool at the start of each `planTCH` call, regardless of which pass is active. Adjacent ARFCNs (±1) to other sectors' TCHs are still allowed. If the band pool is fully exhausted by other sectors, `tch900Mode` / `tch1800Mode` = `impossible` is reported.

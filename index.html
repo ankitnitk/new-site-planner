@@ -371,12 +371,14 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count) {
 
   // intra-sector adjacency (minSep=2) is NEVER relaxed — adjacent freqs in same cell cause ACI
   let list=[], mode="clean";
-  // poolC: nb conflict OK, but still avoids intra-site exact reuse AND intra-site adjacency
+  // poolC: nb conflict OK, but still avoids intra-site exact reuse AND cross-sector adjacency
   const poolC = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a) && !otherSectorAdj.has(a));
-  // poolD: nb conflict OK, intra-site adj OK, but no exact intra-site TCH reuse
+  // poolD: nb conflict OK, cross-sector adj OK, no exact intra-site TCH reuse
   const poolD = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
-  // poolE: last resort — relaxes nb conflict and intra-site adj, but still never reuses a sibling sector's exact TCH
-  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
+  // poolE: exact intra-site TCH reuse allowed, but still avoids cross-sector adjacency
+  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorAdj.has(a));
+  // poolF: last resort — exact reuse AND cross-sector adj both allowed; only BCCH adjacency still blocked
+  const poolF = tchPool.filter(a => !inSiteBCCHAdj.has(a));
 
   list = optimalTCHSelect(poolA, count, 2, siteRegTCH);
   if (list.length >= count) { mode="clean"; }
@@ -392,8 +394,12 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count) {
       if (listD.length > list.length) { list=listD; mode=listD.length>=count?"nb_reuse_adj":"partial"; }
     }
     if (list.length < count) {
-      const listE = spreadSelect(poolE, count, 2);
-      if (listE.length > list.length) { list=listE; mode="reuse"; }
+      const listE = optimalTCHSelect(poolE, count, 2, siteRegTCH);
+      if (listE.length > list.length) { list=listE; mode=listE.length>=count?"site_reuse":"partial"; }
+    }
+    if (list.length < count) {
+      const listF = spreadSelect(poolF, count, 2);
+      if (listF.length > list.length) { list=listF; mode="reuse"; }
     }
   }
 
@@ -750,7 +756,7 @@ function planOneSite(site, workingCells, cfg) {
   // ── Round-robin TCH assignment ────────────────────────────────────────────
   // Assign 1 TCH per sector per band per round so that each sector's Nth pick
   // is informed by every other sector's (N-1) already-committed TCHs.
-  const MODE_RANK = {clean:0,'n/a':0,partial:1,site_adj:2,nb_reuse:3,nb_reuse_adj:4,reuse:5,impossible:6};
+  const MODE_RANK = {clean:0,'n/a':0,partial:1,site_adj:2,nb_reuse:3,nb_reuse_adj:4,site_reuse:5,reuse:6,impossible:7};
   const worseMode = (a,b) => (MODE_RANK[a]??1) >= (MODE_RANK[b]??1) ? a : b;
 
   const maxRounds = sectorResults.reduce((m,s) => Math.max(m, s.tch900Count, s.tch1800Count), 0);
@@ -1058,7 +1064,7 @@ function Pill({n,type}) {
 }
 
 function ModeBadge({mode}) {
-  const cfg={clean:{l:"✓ clean",t:"info"},bsic_only:{l:"⚠ BSIC guard",t:"warn"},forced:{l:"⚠ forced",t:"warn"},site_adj:{l:"~ x-sector adj",t:"warn"},intra_adj:{l:"⚠ intra-adj",t:"warn"},reuse:{l:"⚠ reuse",t:"warn"},"n/a":{l:"—",t:"default"}};
+  const cfg={clean:{l:"✓ clean",t:"info"},bsic_only:{l:"⚠ BSIC guard",t:"warn"},forced:{l:"⚠ forced",t:"warn"},site_adj:{l:"~ x-sector adj",t:"warn"},nb_reuse:{l:"⚠ nb reuse",t:"warn"},nb_reuse_adj:{l:"⚠ nb+adj",t:"warn"},site_reuse:{l:"⚠ site reuse",t:"warn"},intra_adj:{l:"⚠ intra-adj",t:"warn"},reuse:{l:"⚠ reuse",t:"warn"},impossible:{l:"✗ impossible",t:"error"},"n/a":{l:"—",t:"default"}};
   const c=cfg[mode]||{l:mode,t:"default"};
   const m={info:{bg:"var(--color-background-info)",color:"var(--color-text-info)",b:"var(--color-border-info)"},
     warn:{bg:"var(--color-background-warning)",color:"var(--color-text-warning)",b:"var(--color-border-warning)"},
