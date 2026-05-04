@@ -880,7 +880,26 @@ function planAllSites(sites,baseCells,cfg) {
       prevVCells[site.name] = sectorResults.map(r => toVCell(site, r));
     });
 
+    // Lock sites that have zero frequency coupling with the rest of the batch:
+    //   1. Every sector already has a clean BCCH assignment, AND
+    //   2. No sector sees any other planned site as a neighbour (isPlanned flag).
+    // Such sites have no reason to change — their planning environment is identical
+    // to the previous pass, so re-running planOneSite would produce the exact same
+    // result.  We copy the previous result directly and skip the expensive call.
+    // Sites that ARE neighbours of other planned sites are still re-planned even if
+    // locked themselves — their frequencies may still influence others' assignments.
+    const locked = new Set(
+      lastResults
+        .filter(({sectorResults}) =>
+          sectorResults.every(r => r.bcchMode === 'clean') &&
+          !sectorResults.some(r => r.externalNeighbors.some(nb => nb.isPlanned))
+        )
+        .map(({site}) => site.name)
+    );
+
     const nextResults = sites.map(site => {
+      // Locked site: planning environment unchanged, copy previous result as-is.
+      if (locked.has(site.name)) return lastResults.find(r => r.site.name === site.name);
       const wc = [...baseCells];
       sites.forEach(s => {
         if (s.name !== site.name) (prevVCells[s.name] || []).forEach(vc => wc.push(vc));
