@@ -674,29 +674,39 @@ function planOneSite(site, workingCells, cfg) {
       .filter(c => c.d >= 0.05);
 
     let bestBCCH = null, bestNCC = null, bestBCC = null, bcchMode = "clean";
-    let bsicSearchR = cfg.bsicRadius ?? 50;
+    let bestBsicR = 0; // actual radius at which BSIC uniqueness was achieved
+    const bsicMaxR = cfg.bsicRadius ?? 50;
     const nccOrd = shuffle(nccPool);
     const bccOrd = shuffle([0,1,2,3,4,5,6,7]);
 
-    outer: while (bsicSearchR >= 1) {
-      // Build forbidden set: "${bcch}_${ncc}_${bcc}" keys taken within current radius
-      const forbidden = new Set();
-      bsicPool.filter(c => c.d <= bsicSearchR).forEach(c => forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
-      for (const pass of passes) {
+    // BCCH tier takes absolute priority over BSIC uniqueness radius.
+    // For each tier (clean → t2_reuse → t1_reuse → forced), try shrinking the BSIC
+    // uniqueness radius until a free (NCC, BCC) slot is found for some BCCH in that
+    // tier's candidate set.  Only move to the next (worse) BCCH tier if no BCCH in
+    // the current tier can achieve BSIC uniqueness even at the minimum radius.
+    // This prevents a dense network (many forbidden triplets at 50 km) from forcing
+    // a t1_reuse BCCH when a t2_reuse BCCH would have worked at a slightly smaller radius.
+    passLoop: for (const pass of passes) {
+      let r = bsicMaxR;
+      while (r >= 1) {
+        const forbidden = new Set();
+        bsicPool.filter(c => c.d <= r).forEach(c => forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
         for (const { a } of pass.cands) {
           for (const n of nccOrd) {
             for (const b of bccOrd) {
               if (!forbidden.has(`${a}_${n}_${b}`)) {
-                bestBCCH = a; bestNCC = n; bestBCC = b; bcchMode = pass.mode; break outer;
+                bestBCCH = a; bestNCC = n; bestBCC = b; bcchMode = pass.mode; bestBsicR = r;
+                break passLoop;
               }
             }
           }
         }
+        r *= 0.8;
       }
-      bsicSearchR *= 0.8;
+      // If we exhausted all radii for this pass with no result, fall through to next pass.
     }
     if (bestBCCH === null) {
-      // Shrinking-radius BSIC uniqueness loop exhausted — absolute last resort.
+      // All tiers exhausted across all radii — absolute last resort.
       // Still never reuse a sibling sector's exact BCCH; ignore all other constraints.
       const freePool = bcchPool.filter(a => !inSiteExact.has(a));
       if (freePool.length) {
@@ -706,10 +716,11 @@ function planOneSite(site, workingCells, cfg) {
         const cnt = Array(8).fill(0);
         bsicPool.forEach(c => cnt[c.bcc]++);
         bestBCC = cnt.indexOf(Math.min(...cnt));
+        bestBsicR = 0;
       } else {
         // Truly impossible — all BCCHs in the pool are already used by sibling sectors of this site
         bcchMode = "impossible";
-        bestBCCH = null; bestNCC = null; bestBCC = null;
+        bestBCCH = null; bestNCC = null; bestBCC = null; bestBsicR = 0;
       }
     }
     if (bestBCCH !== null) siteReg.bcch.push(bestBCCH);
