@@ -289,8 +289,9 @@ function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
   // TCHs (while still respecting the pool's exclusion rules). This leaves the far end of the pool
   // free for subsequent allocations, maximising contiguous free space globally.
   // When no siblings exist yet (siteRegTCH empty), minimise internal spread — keeps the cluster tight.
-  // Tiebreak on distance: minimise internal spread.
-  let bestCombo=null, bestDist=Infinity, bestSpread=Infinity;
+  // Among ALL combinations that tie on (dist, spread), one is chosen randomly to avoid systematic
+  // low-ARFCN bias (the sorted search order would otherwise always favour the lowest-valued cluster).
+  let bestCombos=[], bestDist=Infinity, bestSpread=Infinity;
 
   function search(start, sel) {
     if (sel.length === count) {
@@ -298,7 +299,9 @@ function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
         : Math.min(...sel.flatMap(s => siteRegTCH.map(r => Math.abs(s-r))));
       const spread = sel[sel.length-1] - sel[0];
       if (dist < bestDist || (dist === bestDist && spread < bestSpread)) {
-        bestDist=dist; bestSpread=spread; bestCombo=[...sel];
+        bestDist=dist; bestSpread=spread; bestCombos=[[...sel]];
+      } else if (dist === bestDist && spread === bestSpread && bestCombos.length < 200) {
+        bestCombos.push([...sel]); // collect ties for random selection below
       }
       return;
     }
@@ -309,7 +312,8 @@ function optimalTCHSelect(pool, count, minSep, siteRegTCH) {
     }
   }
   search(0, []);
-  return bestCombo ?? [];
+  if (!bestCombos.length) return [];
+  return bestCombos[Math.floor(Math.random() * bestCombos.length)];
 }
 
 // ── Spread selection ──────────────────────────────────────────────────────────
