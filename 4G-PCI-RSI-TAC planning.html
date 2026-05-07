@@ -5,153 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LTE PCI / RSI / TAC Planner</title>
 
-  <!-- CDN libraries — internet connection required on first load.
-       OFFLINE FALLBACK: download these files and place alongside this HTML:
-       react.development.js  → https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js
-       react-dom.development.js → https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js
-       babel.min.js → https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js
-       xlsx.bundle.js → https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js
-  -->
+  <!-- Proper script tags (CDN). If CDN blocked, download locally and replace src. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"
-    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+          onerror="document.getElementById('cdn-err').style.display='block'"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"
-    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+          onerror="document.getElementById('cdn-err').style.display='block'"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"
-    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+          onerror="document.getElementById('cdn-err').style.display='block'"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"
-    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+          onerror="document.getElementById('cdn-err').style.display='block'"></script>
 
   <style>
     :root{
-      --bg:#f3f5f7;
-      --card:#ffffff;
-      --text:#0f172a;
-      --muted:#64748b;
-      --border:#e2e8f0;
-      --blue:#2563eb;
-      --blue2:#1d4ed8;
-      --danger:#b91c1c;
-      --dangerbg:#fee2e2;
-      --success:#166534;
-      --successbg:#dcfce7;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
-      --shadow: 0 6px 18px rgba(15, 23, 42, .06);
-      --r: 14px;
+      --bg:#f3f5f7; --card:#ffffff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+      --blue:#2563eb; --blue2:#1d4ed8; --danger:#b91c1c; --dangerbg:#fee2e2;
+      --success:#166534; --successbg:#dcfce7;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
+      --shadow: 0 6px 18px rgba(15,23,42,.06); --r:14px;
     }
     *{ box-sizing:border-box; }
     body{ margin:0; font-family:var(--sans); background:var(--bg); color:var(--text); }
-    #cdn-err{
-      display:none; position:sticky; top:0; z-index:9999;
-      padding:12px 16px; background:#7f1d1d; color:#fff;
-      font-size:13px; text-align:center;
-    }
+    #cdn-err{ display:none; position:sticky; top:0; z-index:9999; padding:12px 16px; background:#7f1d1d; color:#fff; font-size:13px; text-align:center; }
     header{
-      height:56px; display:flex; align-items:center; justify-content:space-between;
-      padding:0 22px; background:linear-gradient(135deg,#0b1b47 0%, #071a3a 55%, #08122e 100%);
-      color:#fff; box-shadow: 0 2px 12px rgba(0,0,0,.22);
+      height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 22px;
+      background:linear-gradient(135deg,#0b1b47 0%, #071a3a 55%, #08122e 100%); color:#fff;
+      box-shadow: 0 2px 12px rgba(0,0,0,.22);
     }
     header .title{ font-weight:800; letter-spacing:.6px; }
     header .sub{ font-size:12px; opacity:.8; }
-    #root{ max-width: 1300px; margin: 0 auto; padding: 22px 22px 60px; }
-    .card{
-      background:var(--card); border:1px solid var(--border); border-radius:var(--r);
-      box-shadow: var(--shadow); padding:16px 16px;
-      margin-bottom:12px;
-    }
+    #root{ max-width: 1350px; margin: 0 auto; padding: 22px 22px 60px; }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); padding:16px; margin-bottom:12px; }
     .row{ display:flex; gap:14px; flex-wrap:wrap; }
     .col{ flex:1; min-width: 320px; }
     .label{ font-size:12px; color:var(--muted); margin:0 0 6px; }
-    input, select{
-      width:100%; padding:9px 10px; border-radius:10px;
-      border:1px solid #cbd5e1; outline:none; background:#fff;
-      font-size:13px;
-    }
-    input:focus, select:focus{ border-color: rgba(37,99,235,.65); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
-    button{
-      padding:9px 14px; border-radius:10px; border:1px solid #cbd5e1;
-      background:#fff; cursor:pointer; font-size:13px; font-weight:600;
-      transition: all .15s ease;
-    }
+    input, select{ width:100%; padding:9px 10px; border-radius:10px; border:1px solid #cbd5e1; outline:none; background:#fff; font-size:13px; }
+    input:focus, select:focus{ border-color:rgba(37,99,235,.65); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    button{ padding:9px 14px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; font-size:13px; font-weight:600; transition: all .15s ease; }
     button:hover{ background:#f8fafc; }
-    button.primary{
-      background:var(--blue); border-color:var(--blue); color:#fff;
-      box-shadow: 0 10px 18px rgba(37,99,235,.18);
-    }
+    button.primary{ background:var(--blue); border-color:var(--blue); color:#fff; box-shadow:0 10px 18px rgba(37,99,235,.18); }
     button.primary:hover{ background:var(--blue2); border-color:var(--blue2); }
     button:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
-    .mono{ font-family: var(--mono); }
+    .mono{ font-family:var(--mono); }
     .small{ font-size:12px; color:var(--muted); line-height:1.55; }
-    .err{
-      background:var(--dangerbg); border:1px solid #fecaca; color:var(--danger);
-      padding:10px 12px; border-radius:12px; margin-bottom:12px; font-size:13px; font-weight:600;
-    }
-    .ok{
-      background:var(--successbg); border:1px solid #bbf7d0; color:var(--success);
-      padding:8px 10px; border-radius:12px; margin-top:10px; font-size:12px; font-weight:600;
-    }
+    .err{ background:var(--dangerbg); border:1px solid #fecaca; color:var(--danger); padding:10px 12px; border-radius:12px; margin-bottom:12px; font-size:13px; font-weight:600; }
+    .ok{ background:var(--successbg); border:1px solid #bbf7d0; color:var(--success); padding:8px 10px; border-radius:12px; margin-top:10px; font-size:12px; font-weight:600; }
+
     table{ width:100%; border-collapse:collapse; font-size:12px; }
-    thead th{
-      text-align:left; font-size:11px; color:var(--muted);
-      border-bottom:1px solid var(--border); padding:10px 10px;
-      position:sticky; top:0; background: #fff;
-      white-space:nowrap;
-    }
+    thead th{ text-align:left; font-size:11px; color:var(--muted); border-bottom:1px solid var(--border); padding:10px; position:sticky; top:0; background:#fff; white-space:nowrap; }
     tbody td{ padding:9px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
     tbody tr:nth-child(2n){ background:#fbfdff; }
-    .steps{
-      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    }
-    .step{
-      display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-      border:1px solid var(--border); background:#fff;
-      font-size:12px; color:var(--muted);
-    }
-    .step .dot{
-      width:18px; height:18px; border-radius:50%;
-      display:flex; align-items:center; justify-content:center;
-      font-size:11px; font-weight:800;
-      background:#eef2ff; color:#3730a3;
-    }
+
+    .steps{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .step{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; color:var(--muted); }
+    .step .dot{ width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; background:#eef2ff; color:#3730a3; }
     .step.active{ border-color: rgba(37,99,235,.35); color:var(--text); }
     .step.active .dot{ background: rgba(37,99,235,.15); color:var(--blue); }
     .step.done{ background: rgba(22,101,52,.06); border-color: rgba(22,101,52,.25); }
     .step.done .dot{ background: rgba(22,101,52,.15); color: var(--success); }
-    .grid2{
-      display:grid; grid-template-columns: 1fr 1fr; gap:14px;
-    }
-    @media (max-width: 980px){
-      .grid2{ grid-template-columns: 1fr; }
-      .col{ min-width: 100%; }
-    }
-    .progressWrap{
-      margin-top:12px;
-      padding:12px 14px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background:#f8fafc;
-    }
-    .barOuter{
-      height:8px; background:#e9eef7; border-radius:999px; overflow:hidden;
-      border:1px solid #dbe4f4;
-    }
-    .barInner{
-      height:100%;
-      background: var(--blue);
-      width:0%;
-      transition: width .12s ease;
-    }
+
+    .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    @media (max-width: 980px){ .grid2{ grid-template-columns:1fr; } .col{ min-width:100%; } }
+
+    .progressWrap{ margin-top:12px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:#f8fafc; }
+    .barOuter{ height:8px; background:#e9eef7; border-radius:999px; overflow:hidden; border:1px solid #dbe4f4; }
+    .barInner{ height:100%; background:var(--blue); width:0%; transition:width .12s ease; }
   </style>
 </head>
 
 <body>
-  <div id="cdn-err">⚠ One or more required libraries failed to load from CDN. Check your internet connection, or download the JS files locally (see HTML head comment).</div>
+  <div id="cdn-err">⚠ Required libraries failed to load. Check connectivity or use offline fallback (download scripts locally).</div>
   <header>
     <div>
       <div class="title">LTE PCI / RSI / TAC Planner</div>
-      <div class="sub">Fixed file loading + fixed column mapping + progress + remarks</div>
+      <div class="sub">PCI MOD3 rule applied in blocks of 3 sectors (1–3, 4–6, 7–9, …)</div>
     </div>
-    <div class="sub">By: Ankit Jain</div>
+    <div class="sub">Single‑file HTML</div>
   </header>
 
   <div id="root"></div>
@@ -175,7 +104,7 @@ function parseCSVText(text) {
   const sep = first.split(";").length > first.split(",").length ? ";" : ",";
   const split = (line) => {
     if (sep === ";") return line.split(";").map(v => v.trim().replace(/^"|"$/g,""));
-    const out = []; let q=false, c="";
+    const out=[]; let q=false, c="";
     for (const ch of line) {
       if (ch === '"') { q=!q; continue; }
       if (ch === "," && !q) { out.push(c.trim()); c=""; continue; }
@@ -192,16 +121,16 @@ function parseCSVText(text) {
     headers.forEach((h,i) => o[h] = (vals[i] ?? "").trim());
     return o;
   });
-  return { headers, rows, sheetName: null, allSheets: [] };
+  return { headers, rows, sheetName:null, allSheets:[] };
 }
 
 function pickSheet(names, preferred) {
   if (!names || !names.length) return null;
   if (preferred) {
     const pl = preferred.toLowerCase();
-    const exact = names.find(n => (n || "").toLowerCase() === pl);
+    const exact = names.find(n => (n||"").toLowerCase() === pl);
     if (exact) return exact;
-    const inc = names.find(n => (n || "").toLowerCase().includes(pl));
+    const inc = names.find(n => (n||"").toLowerCase().includes(pl));
     if (inc) return inc;
   }
   return names[0];
@@ -210,9 +139,7 @@ function pickSheet(names, preferred) {
 async function parseFile(file, preferredSheet) {
   const buf = await readBuf(file);
   const ext = file.name.split(".").pop().toLowerCase();
-  if (ext === "csv" || ext === "txt") {
-    return parseCSVText(new TextDecoder().decode(buf));
-  }
+  if (ext === "csv" || ext === "txt") return parseCSVText(new TextDecoder().decode(buf));
   const wb = XLSX.read(buf, { type:"array", cellDates:true });
   const sn = pickSheet(wb.SheetNames, preferredSheet);
   const json = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval:"", raw:false });
@@ -222,7 +149,7 @@ async function parseFile(file, preferredSheet) {
     Object.entries(r).forEach(([k,v]) => o[k] = String(v).trim());
     return o;
   });
-  return { headers, rows, sheetName: sn, allSheets: wb.SheetNames };
+  return { headers, rows, sheetName:sn, allSheets: wb.SheetNames };
 }
 
 /* =========================
@@ -239,8 +166,8 @@ const findCol = (headers, patterns) => {
 };
 
 const detectGisCols = (h) => ({
-  siteName: findCol(h, ["lnbts","site_name","sitename","site","enodeb","bts"]),
-  cellName: findCol(h, ["lncel","wcell","cell name","cellname","cell","sector"]),
+  siteName: findCol(h, ["lnbts","site name","sitename","site","enodeb","bts"]),
+  cellName: findCol(h, ["lncel","cell name","cellname","cell","sector"]),
   lat: findCol(h, ["lat","latitude","y_coord","ylat","y"]),
   lon: findCol(h, ["lon","lng","longitude","x_coord","xlon","x"]),
 });
@@ -265,11 +192,10 @@ const detectNewCols = (h) => ({
    ========================= */
 const toRad = d => d * Math.PI / 180;
 function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const R=6371;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 /* =========================
@@ -297,115 +223,212 @@ function buildPlannedSites(rows, m) {
 }
 
 /* =========================
-   Planner core (final rules)
+   Helpers: ranges & radii
    ========================= */
 function rangeList(min, max) {
-  const lo = Math.min(min, max);
-  const hi = Math.max(min, max);
-  const out = [];
-  for (let i = lo; i <= hi; i++) out.push(i);
+  const lo = Math.min(min, max), hi = Math.max(min, max);
+  const out=[];
+  for (let i=lo;i<=hi;i++) out.push(i);
   return out;
 }
-
 function rotatedRange(min, max) {
   const arr = rangeList(min, max);
   if (arr.length <= 1) return arr;
-  const start = Math.floor(Math.random() * arr.length);
-  return [...arr.slice(start), ...arr.slice(0, start)];
+  const start = Math.floor(Math.random()*arr.length);
+  return [...arr.slice(start), ...arr.slice(0,start)];
 }
-
+// Start at 3×MinReuse, step down by 10% of MinReuse, down to 10% of MinReuse
 function reuseRadii(minReuseKm) {
   const base = Number(minReuseKm);
-  const start = 3 * base;
-  const step = 0.1 * base;
-  const end  = 0.1 * base;
-  const radii = [];
-  if (!isFinite(base) || base <= 0 || !isFinite(step) || step <= 0) return radii;
-
-  const steps = Math.floor((start - end) / step + 1e-9) + 1;
-  for (let i = 0; i < steps; i++) {
-    const r = start - i * step;
+  const start = 3*base;
+  const step  = 0.1*base;
+  const end   = 0.1*base;
+  const radii=[];
+  if (!isFinite(base) || base<=0 || !isFinite(step) || step<=0) return radii;
+  const steps = Math.floor((start-end)/step + 1e-9) + 1;
+  for (let i=0;i<steps;i++){
+    const r = start - i*step;
     if (r < end - 1e-9) break;
-    radii.push(Math.round(r * 1000000) / 1000000);
+    radii.push(Math.round(r*1e6)/1e6);
   }
-  if (radii.length && Math.abs(radii[radii.length - 1] - end) > 1e-6) radii.push(end);
+  if (radii.length && Math.abs(radii[radii.length-1]-end) > 1e-6) radii.push(end);
   return radii;
 }
 
+// Spread scoring with reservoir-sampling tie-break (uniform over all tied candidates)
 function pickBestSpread(cands, usedNearby) {
   if (!cands.length) return null;
   const used = usedNearby.filter(v => v !== null && v !== undefined && !isNaN(v));
-  if (!used.length) return cands[Math.floor(Math.random() * cands.length)];
-
-  let best = null, bestScore = -1;
+  if (!used.length) return cands[Math.floor(Math.random()*cands.length)];
+  let best=null, bestScore=-1, seen=0;
   for (const v of cands) {
-    const score = Math.min(...used.map(u => Math.abs(v - u)));
-    if (score > bestScore) { bestScore = score; best = v; }
-    else if (score === bestScore) { if (Math.random() < 0.5) best = v; }
+    const score = Math.min(...used.map(u => Math.abs(v-u)));
+    if (score > bestScore) { bestScore=score; best=v; seen=1; }
+    else if (score === bestScore) { seen++; if (Math.random() < 1/seen) best=v; }
   }
   return best;
 }
 
+/* =========================
+   QA helpers
+   ========================= */
 function nearestSameValueInfo(allCells, lat, lon, field, value) {
-  if (value === null || value === undefined || isNaN(Number(value))) return { cell: "", km: "" };
+  if (value === null || value === undefined || isNaN(Number(value))) return { cell:"", km:"" };
   const v = Number(value);
-  let best = null;
+  let best=null;
   for (const c of allCells) {
     const cv = Number(c[field]);
     if (isNaN(cv) || cv !== v) continue;
     if (isNaN(c.lat) || isNaN(c.lon)) continue;
     const d = haversineKm(lat, lon, c.lat, c.lon);
-    if (best === null || d < best.km) best = { cell: c.cellName || c.siteName || "", km: d };
+    if (best===null || d < best.km) best = { cell: c.cellName || c.siteName || "", km: d };
   }
-  if (!best) return { cell: "None (unique)", km: "∞" };
-  return { cell: best.cell || "", km: Math.round(best.km * 1000) / 1000 };
+  if (!best) return { cell:"None (unique)", km:"∞" };
+  return { cell: best.cell || "", km: Math.round(best.km*1000)/1000 };
 }
 
 function nearestUnknownRemark(baseCells, lat, lon, minReuseKm) {
   const R = Number(minReuseKm);
   if (!isFinite(R) || R <= 0) return "";
-  let best = null;
+  let best=null;
   for (const c of baseCells) {
     if (isNaN(c.lat) || isNaN(c.lon)) continue;
     const d = haversineKm(lat, lon, c.lat, c.lon);
     if (d > R) continue;
-
     const pciKnown = !(c.pci === null || c.pci === undefined || isNaN(Number(c.pci)));
     const rsiKnown = !(c.rsi === null || c.rsi === undefined || isNaN(Number(c.rsi)));
     if (pciKnown && rsiKnown) continue;
-
-    if (best === null || d < best.km) {
-      best = { name: c.siteName || c.cellName || "UnknownSite", km: d, pciKnown, rsiKnown };
-    }
+    if (best===null || d < best.km) best = { name: c.siteName || c.cellName || "UnknownSite", km:d, pciKnown, rsiKnown };
   }
   if (!best) return "";
-  const miss = (!best.pciKnown && !best.rsiKnown) ? "PCI/RSI unknown"
-              : (!best.pciKnown) ? "PCI unknown"
-              : "RSI unknown";
+  const miss = (!best.pciKnown && !best.rsiKnown) ? "PCI/RSI unknown" : (!best.pciKnown) ? "PCI unknown" : "RSI unknown";
   return `Site ${best.name} at ${best.km.toFixed(1)}Km but ${miss}`;
 }
 
-function assignPCI({ siteAssignedPcis, allCells, siteLat, siteLon, pciMin, pciMax, minReuseKm }) {
+/* =========================
+   PCI assignment with MOD3 blocks-of-3
+   =========================
+   - Hard constraints always: reuse + unique within site
+   - Soft MOD3 constraint within current group (block of 3) when group size >=2:
+     - try at current max radius R
+     - if MOD3 not possible but normal candidates exist at R, reduce radius by 10% steps down to MinReuse
+     - if still not possible at MinReuse, pick normal at original R (distance > mod3 beyond MinReuse)
+*/
+function mod3(n){ return ((n % 3) + 3) % 3; }
+
+function assignPCI({
+  siteAssignedPcis,
+  groupAssignedPcis,
+  allCells,
+  siteLat,
+  siteLon,
+  pciMin,
+  pciMax,
+  minReuseKm,
+  groupSize,
+  groupIndex
+}) {
   const pool = rotatedRange(pciMin, pciMax);
-  for (const R of reuseRadii(minReuseKm)) {
+  const baseMin = Number(minReuseKm);
+  const radii = reuseRadii(baseMin);
+
+  const groupNeedsMod3 = groupSize >= 2;
+  const groupFirst = groupAssignedPcis.length === 0;
+
+  const candidatesAtRadius = (R) => {
     const nearby = allCells.filter(c => !isNaN(c.lat) && !isNaN(c.lon) && haversineKm(siteLat, siteLon, c.lat, c.lon) <= R);
     const usedPci = nearby.map(c => Number(c.pci)).filter(v => !isNaN(v));
-    const forbidden = new Set([...usedPci, ...siteAssignedPcis]);
-    const cands = pool.filter(v => !forbidden.has(v));
-    const pick = pickBestSpread(cands, usedPci);
-    if (pick !== null) return { value: pick, reuseKm: R };
+    const forbidden = new Set([...usedPci, ...siteAssignedPcis]); // intra-site always hard-excluded
+    const baseCands = pool.filter(v => !forbidden.has(v));
+    return { baseCands, usedPci };
+  };
+
+  // ── Non-MOD3 path (single-sector group or first in group) ────────────────
+  // Just find the highest-isolation free PCI by iterating radii from 3×min down.
+  if (!groupNeedsMod3 || groupFirst) {
+    for (const R of radii) {
+      const { baseCands, usedPci } = candidatesAtRadius(R);
+      const pick = pickBestSpread(baseCands, usedPci);
+      if (pick !== null) {
+        return {
+          value: pick,
+          reuseKm: R,
+          mod3Status: groupNeedsMod3 ? "N/A (first in group)" : "N/A (group size 1)",
+          mod3Class: mod3(pick),
+          mod3Group: groupIndex + 1
+        };
+      }
+    }
+    return { value: null, reuseKm: null, mod3Status: "Not possible", mod3Class: "", mod3Group: groupIndex + 1 };
   }
-  return { value: null, reuseKm: null };
+
+  // ── MOD3 path (not first in group) ───────────────────────────────────────
+  // Single pass over radii from 3×min down to minReuse, trying MOD3 at each step.
+  // The first radius where any normal candidates exist is saved as the fallback —
+  // that is the highest-isolation non-MOD3 pick, used only if MOD3 is impossible
+  // at every radius down to minReuse.  Below minReuse we don't sacrifice distance
+  // further just for MOD3.
+  const usedMods = new Set(groupAssignedPcis.map(x => mod3(x)));
+  let bestNormal = null; // { pick, R } — highest-isolation normal pick, saved as fallback
+
+  for (const R of radii) {
+    const { baseCands, usedPci } = candidatesAtRadius(R);
+    if (!baseCands.length) continue;
+
+    // Record the best normal fallback at the highest radius where candidates exist
+    if (bestNormal === null) {
+      const pick = pickBestSpread(baseCands, usedPci);
+      if (pick !== null) bestNormal = { pick, R };
+    }
+
+    // Attempt MOD3 at this radius
+    const modCands = baseCands.filter(v => !usedMods.has(mod3(v)));
+    const pick = pickBestSpread(modCands, usedPci);
+    if (pick !== null) {
+      const atMax = Math.abs(R - radii[0]) < 1e-9;
+      return {
+        value: pick,
+        reuseKm: R,
+        mod3Status: atMax ? "OK (mod3 unique)" : "OK (mod3 via reduced radius)",
+        mod3Class: mod3(pick),
+        mod3Group: groupIndex + 1
+      };
+    }
+
+    // Don't reduce below MinReuse just to satisfy MOD3
+    if (R <= baseMin + 1e-9) break;
+  }
+
+  // MOD3 impossible at every radius ≥ minReuse — fall back to highest-isolation normal pick
+  if (bestNormal !== null) {
+    return {
+      value: bestNormal.pick,
+      reuseKm: bestNormal.R,
+      mod3Status: "Fallback (mod3 not possible)",
+      mod3Class: mod3(bestNormal.pick),
+      mod3Group: groupIndex + 1
+    };
+  }
+
+  return { value: null, reuseKm: null, mod3Status: "Not possible", mod3Class: "", mod3Group: groupIndex + 1 };
 }
 
+/* =========================
+   RSI assignment (unchanged rule-set)
+   - No same RSI reuse within reuse radius (existing + planned)
+   - Min RSI gap applies within whole site (across all sectors), as you specified earlier
+   ========================= */
 function assignRSI({ siteAssignedRsis, allCells, siteLat, siteLon, rsiMin, rsiMax, minReuseKm, minGap }) {
   const pool = rotatedRange(rsiMin, rsiMax);
+  // siteAssignedRsis are always hard-excluded (intra-site RSI uniqueness is a hard constraint).
+  // violatesSiteGap adds the additional proximity constraint: RSIs within same site must
+  // differ by at least minGap, not just be unique.
   const violatesSiteGap = (v) => siteAssignedRsis.some(x => x !== null && x !== undefined && !isNaN(x) && Math.abs(v - x) < minGap);
 
-  for (const R of reuseRadii(minReuseKm)) {
+  for (const R of reuseRadii(Number(minReuseKm))) {
     const nearby = allCells.filter(c => !isNaN(c.lat) && !isNaN(c.lon) && haversineKm(siteLat, siteLon, c.lat, c.lon) <= R);
     const usedRsi = nearby.map(c => Number(c.rsi)).filter(v => !isNaN(v));
-    const forbidden = new Set(usedRsi);
+    const forbidden = new Set([...usedRsi, ...siteAssignedRsis]); // hard: external reuse + intra-site uniqueness
     const cands = pool.filter(v => !forbidden.has(v) && !violatesSiteGap(v));
     const pick = pickBestSpread(cands, [...usedRsi, ...siteAssignedRsis]);
     if (pick !== null) return { value: pick, reuseKm: R };
@@ -413,6 +436,9 @@ function assignRSI({ siteAssignedRsis, allCells, siteLat, siteLon, rsiMin, rsiMa
   return { value: null, reuseKm: null };
 }
 
+/* =========================
+   TAC assignment
+   ========================= */
 function nearestSiteTac({ baseCells, siteLat, siteLon }) {
   const bySite = new Map();
   baseCells.forEach(c => {
@@ -421,33 +447,32 @@ function nearestSiteTac({ baseCells, siteLat, siteLon }) {
     bySite.get(c.siteName).push(c);
   });
 
-  let bestSite = null, bestDist = Infinity;
-  for (const [sn, cells] of bySite.entries()) {
-    const clat = cells.reduce((s,x)=>s+Number(x.lat),0) / cells.length;
-    const clon = cells.reduce((s,x)=>s+Number(x.lon),0) / cells.length;
+  let bestSite=null, bestDist=Infinity;
+  for (const [sn,cells] of bySite.entries()) {
+    const clat = cells.reduce((s,x)=>s+Number(x.lat),0)/cells.length;
+    const clon = cells.reduce((s,x)=>s+Number(x.lon),0)/cells.length;
     const d = haversineKm(siteLat, siteLon, clat, clon);
-    if (d < bestDist) { bestDist = d; bestSite = sn; }
+    if (d < bestDist) { bestDist=d; bestSite=sn; }
   }
-  if (!bestSite) return { nearestSite: "", tac: "" };
+  if (!bestSite) return { nearestSite:"", tac:"" };
 
   const freq = new Map();
-  (bySite.get(bestSite) || []).forEach(c => {
+  (bySite.get(bestSite)||[]).forEach(c => {
     const t = c.tac;
     if (t === null || t === undefined || t === "") return;
     const num = Number(t);
     if (isNaN(num)) return;
     const k = String(num);
-    freq.set(k, (freq.get(k) || 0) + 1);
+    freq.set(k, (freq.get(k)||0)+1);
   });
-  if (!freq.size) return { nearestSite: bestSite, tac: "" };
-
+  if (!freq.size) return { nearestSite:bestSite, tac:"" };
   const max = Math.max(...freq.values());
-  const modes = [...freq.entries()].filter(([k,v]) => v === max).map(([k]) => k).sort((a,b)=>Number(a)-Number(b));
-  return { nearestSite: bestSite, tac: modes.join(", ") };
+  const modes = [...freq.entries()].filter(([k,v])=>v===max).map(([k])=>k).sort((a,b)=>Number(a)-Number(b));
+  return { nearestSite:bestSite, tac:modes.join(", ") };
 }
 
 /* =========================
-   Async planner with progress + yielding (no hung UI) [1](https://onedrive.live.com?cid=9E5F83236A07AAB3&id=9E5F83236A07AAB3!s5accec931be54e88849b08e3f323ca93)
+   Async planner with progress (yield to UI)
    ========================= */
 const yield_ = () => new Promise(r => setTimeout(r, 0));
 
@@ -459,26 +484,45 @@ async function planAllAsync(plannedSites, baseCells, cfg, onProgress) {
   const totalSectors = plannedSites.reduce((s,p)=>s + (p.sectors?.length || 0), 0);
   let done = 0;
 
-  for (let si = 0; si < plannedSites.length; si++) {
+  for (let si=0; si<plannedSites.length; si++) {
     const site = plannedSites[si];
     const siteAssignedPcis = [];
     const siteAssignedRsis = [];
+
+    // MOD3 groups: block-of-3 tracking
+    const groupAssigned = []; // array of arrays; groupAssigned[g] = [pcis...]
+    const total = site.sectors.length;
+
+    // TAC is looked up from existing network only (baseCells), not from other planned sites —
+    // TAC boundaries are defined by the existing network topology, not by new site additions.
     const { nearestSite, tac } = nearestSiteTac({ baseCells, siteLat: site.lat, siteLon: site.lon });
 
-    for (let ti = 0; ti < site.sectors.length; ti++) {
+    for (let ti=0; ti<site.sectors.length; ti++) {
       onProgress && onProgress({ done, total: totalSectors, siteName: site.name, sectorIndex: ti, phase: "planning" });
       await yield_();
 
       const work = allCells();
 
+      const groupIndex = Math.floor(ti / 3);
+      const groupSize = Math.min(3, total - groupIndex*3); // last group can be 1 or 2
+      if (!groupAssigned[groupIndex]) groupAssigned[groupIndex] = [];
+      const groupAssignedPcis = groupAssigned[groupIndex];
+
       const pciRes = assignPCI({
         siteAssignedPcis,
+        groupAssignedPcis,
         allCells: work,
         siteLat: site.lat, siteLon: site.lon,
         pciMin: cfg.pciMin, pciMax: cfg.pciMax,
-        minReuseKm: cfg.minReuseKm
+        minReuseKm: cfg.minReuseKm,
+        groupSize,
+        groupIndex
       });
-      if (pciRes.value !== null) siteAssignedPcis.push(pciRes.value);
+
+      if (pciRes.value !== null) {
+        siteAssignedPcis.push(pciRes.value);
+        groupAssignedPcis.push(pciRes.value);
+      }
 
       const rsiRes = assignRSI({
         siteAssignedRsis,
@@ -502,6 +546,9 @@ async function planAllAsync(plannedSites, baseCells, cfg, onProgress) {
 
         "Planned PCI": pciRes.value !== null ? pciRes.value : "Not possible",
         "PCI reuse distance (km)": pciRes.reuseKm !== null ? (Math.round(pciRes.reuseKm * 1000) / 1000) : "",
+        "PCI MOD3 Group": pciRes.value !== null ? pciRes.mod3Group : (Math.floor(ti/3)+1),
+        "PCI MOD3 Class": pciRes.value !== null ? pciRes.mod3Class : "",
+        "PCI MOD3 Status": pciRes.value !== null ? pciRes.mod3Status : "Not possible",
         "Nearest same-PCI cell (QA)": pciRes.value !== null ? pciQA.cell : "",
         "Same-PCI distance (km) (QA)": pciRes.value !== null ? pciQA.km : "",
 
@@ -518,8 +565,7 @@ async function planAllAsync(plannedSites, baseCells, cfg, onProgress) {
       plannedSectors.push({
         siteName: site.name,
         cellName: `${site.name}_${site.sectors[ti].label || ("S"+(ti+1))}`,
-        lat: site.lat,
-        lon: site.lon,
+        lat: site.lat, lon: site.lon,
         pci: (pciRes.value !== null && !isNaN(pciRes.value)) ? pciRes.value : null,
         rsi: (rsiRes.value !== null && !isNaN(rsiRes.value)) ? rsiRes.value : null,
         tac: tac || null
@@ -541,36 +587,36 @@ async function planAllAsync(plannedSites, baseCells, cfg, onProgress) {
 function exportXlsx(rows) {
   const ws = XLSX.utils.json_to_sheet(rows);
   const HDR = {
-    fill: { patternType: "solid", fgColor: { rgb: "1D4ED8" } },
-    font: { bold: true, color: { rgb: "FFFFFF" } },
-    alignment: { horizontal: "center", vertical: "center" }
+    fill: { patternType:"solid", fgColor:{ rgb:"1D4ED8" } },
+    font: { bold:true, color:{ rgb:"FFFFFF" } },
+    alignment: { horizontal:"center", vertical:"center" }
   };
   if (ws["!ref"]) {
     const range = XLSX.utils.decode_range(ws["!ref"]);
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+    for (let C=range.s.c; C<=range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r:0, c:C });
       if (ws[addr]) ws[addr].s = HDR;
     }
-    ws["!views"] = [{ state: "frozen", xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" }];
+    ws["!views"] = [{ state:"frozen", xSplit:0, ySplit:1, topLeftCell:"A2", activePane:"bottomLeft" }];
   }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "LTE Plan");
-  XLSX.writeFile(wb, "lte_pci_rsi_tac_plan.xlsx", { cellStyles: true });
+  XLSX.writeFile(wb, "lte_pci_rsi_tac_plan.xlsx", { cellStyles:true });
 }
 
 /* =========================
-   UI Components
+   UI components
    ========================= */
 function Steps({ current }) {
-  const items = ["Load data", "Configure", "Results"];
+  const items=["Load data","Configure","Results"];
   return (
-    <div className="steps" style={{marginBottom:12}}>
-      {items.map((t,i) => {
-        const n = i+1;
-        const cls = n === current ? "step active" : (n < current ? "step done" : "step");
+    <div className="steps">
+      {items.map((t,i)=>{
+        const n=i+1;
+        const cls = n===current ? "step active" : (n<current ? "step done" : "step");
         return (
           <div key={n} className={cls}>
-            <div className="dot">{n < current ? "✓" : n}</div>
+            <div className="dot">{n<current ? "✓" : n}</div>
             <div style={{fontWeight:800}}>{t}</div>
           </div>
         );
@@ -581,22 +627,20 @@ function Steps({ current }) {
 
 function FileBlock({ title, hint, onLoad, sheetHint }) {
   const inputRef = useRef(null);
-  const [loading, setLoading] = useState(false);
-  const [meta, setMeta] = useState(null);
-
-  const pick = () => inputRef.current?.click();
+  const [loading,setLoading]=useState(false);
+  const [meta,setMeta]=useState(null);
 
   const handle = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setLoading(true);
-    try {
+    try{
       const d = await parseFile(file, sheetHint);
       setMeta({ rows: d.rows.length, sheet: d.sheetName });
       onLoad(d, file.name);
-    } catch (err) {
+    } catch(err){
       alert("Failed to read file: " + (err?.message || err));
-    } finally {
+    } finally{
       setLoading(false);
     }
   };
@@ -605,8 +649,8 @@ function FileBlock({ title, hint, onLoad, sheetHint }) {
     <div className="card">
       <div style={{fontWeight:900, fontSize:14}}>{title}</div>
       <div className="small" style={{margin:"6px 0 10px"}}>{hint}</div>
-      <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.txt" style={{display:"none"}} onChange={handle} />
-      <button onClick={pick} disabled={loading}>{loading ? "Reading…" : "Upload file"}</button>
+      <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.txt" style={{display:"none"}} onChange={handle}/>
+      <button onClick={() => inputRef.current?.click()} disabled={loading}>{loading ? "Reading…" : "Upload file"}</button>
       {meta && <div className="ok">✓ {meta.rows.toLocaleString()} rows{meta.sheet ? ` · sheet: "${meta.sheet}"` : ""}</div>}
     </div>
   );
@@ -623,7 +667,7 @@ function ColMapper({ headers, mapping, onChange, fields }) {
             <select
               className="mono"
               value={mapping[key] || ""}
-              onChange={e => onChange({ ...mapping, [key]: e.target.value })}  /* ✅ FIXED */
+              onChange={e => onChange({ ...mapping, [key]: e.target.value })}
             >
               <option value="">— select —</option>
               {headers.map(h => <option key={h} value={h}>{h}</option>)}
@@ -638,30 +682,22 @@ function ColMapper({ headers, mapping, onChange, fields }) {
 /* =========================
    App
    ========================= */
-function App() {
-  const [step, setStep] = useState(1);
-  const [err, setErr] = useState("");
+function App(){
+  const [step,setStep]=useState(1);
+  const [err,setErr]=useState("");
 
-  const [gisData, setGisData] = useState(null);
-  const [gisMap, setGisMap] = useState({});
-  const [sumData, setSumData] = useState(null);
-  const [sumMap, setSumMap] = useState({});
-  const [nsData, setNsData] = useState(null);
-  const [nsMap, setNsMap] = useState({});
+  const [gisData,setGisData]=useState(null);
+  const [gisMap,setGisMap]=useState({});
+  const [sumData,setSumData]=useState(null);
+  const [sumMap,setSumMap]=useState({});
+  const [nsData,setNsData]=useState(null);
+  const [nsMap,setNsMap]=useState({});
 
-  const [cfg, setCfg] = useState({
-    minReuseKm: 20,
-    minRsiGap: 20,
-    pciMin: 0,
-    pciMax: 502,
-    rsiMin: 0,
-    rsiMax: 837
-  });
+  const [cfg,setCfg]=useState({ minReuseKm:20, minRsiGap:20, pciMin:0, pciMax:503, rsiMin:0, rsiMax:837 });
+  const [results,setResults]=useState(null);
 
-  const [results, setResults] = useState(null);
-
-  const [planning, setPlanning] = useState(false);
-  const [prog, setProg] = useState({ done: 0, total: 0, siteName: "", sectorIndex: 0, phase: "" });
+  const [planning,setPlanning]=useState(false);
+  const [prog,setProg]=useState({ done:0, total:0, siteName:"", sectorIndex:0, phase:"" });
 
   const canContinue = gisData && sumData && nsData;
 
@@ -670,11 +706,10 @@ function App() {
   const onNsLoad  = (d) => { setNsData(d);  setNsMap(detectNewCols(d.headers)); };
 
   const runPlan = async () => {
-    setErr("");
-    setResults(null);
-
+    setErr(""); setResults(null);
     if (!gisData || !sumData || !nsData) { setErr("Upload all 3 files first."); return; }
 
+    // Summary lookup by LNCEL
     const lookup = {};
     sumData.rows.forEach(r => {
       const cn = (r[sumMap.cellName] || "").trim();
@@ -685,10 +720,11 @@ function App() {
       lookup[cn] = {
         pci: isNaN(pci) ? null : pci,
         rsi: isNaN(rsi) ? null : rsi,
-        tac: (tacRaw === undefined || tacRaw === null || String(tacRaw).trim() === "" || isNaN(Number(tacRaw))) ? null : Number(tacRaw)
+        tac: (tacRaw === undefined || tacRaw === null || String(tacRaw).trim()==="" || isNaN(Number(tacRaw))) ? null : Number(tacRaw)
       };
     });
 
+    // Merge GIS + summary
     const baseCells = gisData.rows.map(r => {
       const siteName = (r[gisMap.siteName] || "").trim();
       const cellName = (r[gisMap.cellName] || "").trim();
@@ -704,23 +740,24 @@ function App() {
     const plannedSites = buildPlannedSites(nsData.rows, nsMap);
     if (!plannedSites.length) { setErr("No valid rows in New Sites after mapping. Need Site + Lat + Lon."); return; }
 
+    // Config sanity
     const minReuseKm = Number(cfg.minReuseKm);
-    const minRsiGap = Number(cfg.minRsiGap);
+    const minRsiGap  = Number(cfg.minRsiGap);
     const pciMin = Number(cfg.pciMin), pciMax = Number(cfg.pciMax);
     const rsiMin = Number(cfg.rsiMin), rsiMax = Number(cfg.rsiMax);
-
     if (!isFinite(minReuseKm) || minReuseKm <= 0) { setErr("Minimum reuse distance must be positive."); return; }
     if (!isFinite(minRsiGap) || minRsiGap <= 0) { setErr("Minimum RSI gap must be positive."); return; }
+    if (!isFinite(pciMin) || !isFinite(pciMax) || pciMin >= pciMax) { setErr("PCI min must be less than PCI max."); return; }
+    if (!isFinite(rsiMin) || !isFinite(rsiMax) || rsiMin >= rsiMax) { setErr("RSI min must be less than RSI max."); return; }
 
     const totalSectors = plannedSites.reduce((s,p)=>s + (p.sectors?.length || 0), 0);
     setPlanning(true);
-    setProg({ done: 0, total: totalSectors, siteName: plannedSites[0]?.name || "", sectorIndex: 0, phase: "planning" });
+    setProg({ done:0, total: totalSectors, siteName: plannedSites[0]?.name || "", sectorIndex:0, phase:"planning" });
 
-    try {
+    try{
       const out = await planAllAsync(plannedSites, baseCells, {
         minReuseKm, minRsiGap, pciMin, pciMax, rsiMin, rsiMax
-      }, (p) => setProg({ done: p.done, total: p.total, siteName: p.siteName || "", sectorIndex: p.sectorIndex || 0, phase: p.phase || "" }));
-
+      }, (p) => setProg({ done:p.done, total:p.total, siteName:p.siteName||"", sectorIndex:p.sectorIndex||0, phase:p.phase||"" }));
       setResults(out);
       setStep(3);
     } finally {
@@ -737,8 +774,8 @@ function App() {
           <div style={{flex:1, minWidth:280}}>
             <div style={{fontSize:18, fontWeight:1000}}>LTE PCI / RSI / TAC Planner</div>
             <div className="small" style={{marginTop:6}}>
-              If a neighbour within Minimum Reuse has missing PCI/RSI in Summary, output includes a Remark like:
-              <span className="mono"> Site X at 18.0Km but PCI/RSI unknown</span>.
+              <b>PCI MOD3</b> is enforced in groups of 3 sectors (1–3, 4–6, 7–9…). If MOD3 fails at max radius but normal PCI exists,
+              the planner reduces radius by 10% steps down to <b>MinReuse</b> to try satisfy MOD3; below MinReuse, distance wins.
             </div>
           </div>
           <Steps current={step} />
@@ -753,7 +790,7 @@ function App() {
             <div className="col">
               <FileBlock title="1) Current network GIS (CSV/XLSX)"
                 hint="Required: Site/LNBTS, Cell/LNCEL, Latitude, Longitude"
-                onLoad={onGisLoad} />
+                onLoad={onGisLoad}/>
               {gisData && <ColMapper headers={gisData.headers} mapping={gisMap} onChange={setGisMap}
                 fields={{ siteName:"Site name / LNBTS *", cellName:"Cell name / LNCEL *", lat:"Latitude *", lon:"Longitude *" }} />}
             </div>
@@ -761,7 +798,7 @@ function App() {
             <div className="col">
               <FileBlock title="2) 4G Summary (CSV/XLSX)"
                 hint='Required: LNCEL, PCI, RSI, TAC. Default sheet: "LNCEL Details".'
-                onLoad={onSumLoad} sheetHint="LNCEL Details" />
+                onLoad={onSumLoad} sheetHint="LNCEL Details"/>
               {sumData && <ColMapper headers={sumData.headers} mapping={sumMap} onChange={setSumMap}
                 fields={{ cellName:"LNCEL *", pci:"PCI *", rsi:"RSI *", tac:"TAC *" }} />}
             </div>
@@ -769,7 +806,7 @@ function App() {
             <div className="col">
               <FileBlock title="3) New Sites / Sectors to plan (CSV/XLSX)"
                 hint="One row per sector. Required: New Site Name, Latitude, Longitude."
-                onLoad={onNsLoad} />
+                onLoad={onNsLoad}/>
               {nsData && <ColMapper headers={nsData.headers} mapping={nsMap} onChange={setNsMap}
                 fields={{ siteName:"New Site Name *", siteId:"New Site ID", lat:"Latitude *", lon:"Longitude *", sector:"Sector label (optional)" }} />}
             </div>
@@ -796,14 +833,14 @@ function App() {
               <input className="mono" value={cfg.minReuseKm} onChange={e => setCfg(c => ({...c, minReuseKm: e.target.value}))} />
             </div>
             <div>
-              <div className="label">Minimum RSI gap (within same new site only)</div>
+              <div className="label">Minimum RSI gap (within same site)</div>
               <input className="mono" value={cfg.minRsiGap} onChange={e => setCfg(c => ({...c, minRsiGap: e.target.value}))} />
             </div>
           </div>
 
           <div className="grid2" style={{marginTop:14}}>
             <div>
-              <div className="label">PCI range (0..502)</div>
+              <div className="label">PCI range (0..503)</div>
               <div className="row">
                 <div className="col" style={{minWidth:150}}>
                   <input className="mono" value={cfg.pciMin} onChange={e => setCfg(c => ({...c, pciMin: e.target.value}))} />
@@ -849,7 +886,7 @@ function App() {
                 <div className="small mono">{pct}%</div>
               </div>
               <div className="barOuter"><div className="barInner" style={{width: `${pct}%`}}></div></div>
-              <div className="small" style={{marginTop:8}}>Working… UI stays responsive (yield between sectors). [1](https://onedrive.live.com?cid=9E5F83236A07AAB3&id=9E5F83236A07AAB3!s5accec931be54e88849b08e3f323ca93)</div>
+              <div className="small" style={{marginTop:8}}>Working… UI stays responsive (yield between sectors).</div>
             </div>
           )}
         </div>
@@ -889,6 +926,14 @@ function App() {
               </tbody>
             </table>
           </div>
+
+          <div className="card">
+            <div style={{fontWeight:900, marginBottom:6}}>How to read MOD3 columns</div>
+            <div className="small">
+              <b>PCI MOD3 Group</b> = block of 3 sectors (1=sectors 1–3, 2=sectors 4–6, etc).<br/>
+              <b>PCI MOD3 Status</b> shows whether mod3 uniqueness was achieved in that group at max radius, achieved by reducing down to MinReuse, or fell back.
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -899,3 +944,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
+``
