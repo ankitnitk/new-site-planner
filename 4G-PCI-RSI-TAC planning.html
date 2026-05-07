@@ -151,7 +151,7 @@
       <div class="title">LTE PCI / RSI / TAC Planner</div>
       <div class="sub">Fixed file loading + fixed column mapping + progress + remarks</div>
     </div>
-    <div class="sub">Single‑file HTML</div>
+    <div class="sub">By: Ankit Jain</div>
   </header>
 
   <div id="root"></div>
@@ -239,8 +239,8 @@ const findCol = (headers, patterns) => {
 };
 
 const detectGisCols = (h) => ({
-  siteName: findCol(h, ["lnbts","site name","sitename","site","enodeb","bts"]),
-  cellName: findCol(h, ["lncel","cell name","cellname","cell","sector"]),
+  siteName: findCol(h, ["lnbts","site_name","sitename","site","enodeb","bts"]),
+  cellName: findCol(h, ["lncel","wcell","cell name","cellname","cell","sector"]),
   lat: findCol(h, ["lat","latitude","y_coord","ylat","y"]),
   lon: findCol(h, ["lon","lng","longitude","x_coord","xlon","x"]),
 });
