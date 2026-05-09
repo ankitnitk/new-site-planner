@@ -9,6 +9,8 @@
 
 **Author:** Ankit Jain
 
+> **Disclaimer:** This is an independent personal project and is not affiliated with, endorsed by, or representative of Nokia or any other company.
+
 ---
 
 ## Tools
