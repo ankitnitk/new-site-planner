@@ -127,6 +127,23 @@
       font-size: 11px; color: var(--color-text-tertiary);
       border-top: 1px solid var(--color-border-tertiary);
     }
+    /* Step pill badges */
+    .steps { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .step {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+      border-radius: 999px; border: 1px solid var(--color-border-tertiary);
+      background: white; font-size: 12px; color: var(--color-text-secondary);
+    }
+    .step .dot {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800; flex-shrink: 0;
+      background: var(--nokia-light); color: var(--nokia-dark-blue);
+    }
+    .step.active { border-color: rgba(0,90,255,.35); color: var(--color-text-primary); }
+    .step.active .dot { background: rgba(0,90,255,.15); color: var(--nokia-blue); }
+    .step.done { background: var(--color-background-success); border-color: var(--color-border-success); cursor: pointer; }
+    .step.done .dot { background: rgba(30,110,52,.15); color: var(--color-text-success); }
   </style>
 </head>
 <body>
@@ -1066,26 +1083,20 @@ const DEFAULT_BANDS=[
 ];
 
 // ── UI atoms ──────────────────────────────────────────────────────────────────
-const CARD={background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1rem 1.25rem",marginBottom:"12px"};
+const CARD={background:"var(--color-background-primary)",border:"1px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-xl)",padding:"16px",marginBottom:"12px",boxShadow:"var(--shadow-sm)"};
 const FN={fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"};
 const MONO={fontFamily:"var(--font-mono)",fontSize:"12px"};
 
 function Steps({current,onNav}) {
   return(
-    <div style={{display:"flex",marginBottom:"24px"}}>
+    <div className="steps">
       {["Load data","Configure","Results"].map((s,i)=>{
         const n=i+1,active=n===current,done=n<current;
+        const cls=active?"step active":done?"step done":"step";
         return(
-          <div key={n} style={{display:"flex",alignItems:"center",flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:"8px",cursor:done?"pointer":"default"}} onClick={()=>done&&onNav(n)}>
-              <div style={{width:"22px",height:"22px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:"500",flexShrink:0,
-                background:active?"var(--color-background-info)":done?"var(--color-background-success)":"var(--color-background-secondary)",
-                color:active?"var(--color-text-info)":done?"var(--color-text-success)":"var(--color-text-tertiary)",
-                border:`0.5px solid ${active?"var(--color-border-info)":done?"var(--color-border-success)":"var(--color-border-tertiary)"}`
-              }}>{done?"✓":n}</div>
-              <span style={{fontSize:"13px",color:active?"var(--color-text-primary)":"var(--color-text-tertiary)",fontWeight:active?"500":"400"}}>{s}</span>
-            </div>
-            {i<2&&<div style={{flex:1,height:"0.5px",background:"var(--color-border-tertiary)",margin:"0 12px"}}/>}
+          <div key={n} className={cls} onClick={()=>done&&onNav&&onNav(n)}>
+            <div className="dot">{done?"✓":n}</div>
+            <span style={{fontWeight:600}}>{s}</span>
           </div>
         );
       })}
@@ -1506,12 +1517,19 @@ function FreqPlanner() {
   const sec=cur?.sectorResults?.[activeTab];
 
   return(
-    <div style={{paddingTop:"8px"}}>
-      <p style={{fontSize:"13px",color:"var(--color-text-secondary)",marginBottom:"20px",marginTop:"4px"}}>
-        Upload existing network data + new sites → get BCCH, TCH, BSIC, LAC/RAC/BSC per sector.
-      </p>
-      <Steps current={step} onNav={setStep}/>
-      {err&&<div style={{background:"var(--color-background-danger)",border:"0.5px solid var(--color-border-danger)",color:"var(--color-text-danger)",padding:"10px 14px",borderRadius:"var(--border-radius-md)",marginBottom:"16px",fontSize:"13px"}}>⚠ {err}</div>}
+    <div>
+      <div style={CARD}>
+        <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:260}}>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>2G Frequency Planner</div>
+            <div style={{fontSize:13,color:"var(--color-text-secondary)"}}>
+              Upload existing network data + new sites → get BCCH, TCH, BSIC, LAC/RAC/BSC per sector.
+            </div>
+          </div>
+          <Steps current={step} onNav={setStep}/>
+        </div>
+      </div>
+      {err&&<div style={{background:"var(--color-background-danger)",border:"1px solid var(--color-border-danger)",color:"var(--color-text-danger)",padding:"10px 14px",borderRadius:"var(--border-radius-lg)",marginBottom:"16px",fontSize:"13px"}}>⚠ {err}</div>}
 
       {/* ── STEP 1: Upload all three files ── */}
       {step===1&&(
