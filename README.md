@@ -3,7 +3,7 @@
 Single-file browser-based tools for 2G and 4G radio network planning — no installation, no server, open in any modern browser.
 
 **Author:** Ankit Jain  
-**Live tool index:** https://ankitnitk.github.io/new-site-planning/
+**Live tool index:** https://ankitnitk.github.io/new-site-planner/
 
 | Tool | File | Description |
 |------|------|-------------|
