@@ -16,74 +16,182 @@
           onerror="document.getElementById('cdn-err').style.display='block'"></script>
 
   <style>
-    :root{
-      --bg:#f3f5f7; --card:#ffffff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
-      --blue:#2563eb; --blue2:#1d4ed8; --danger:#b91c1c; --dangerbg:#fee2e2;
-      --success:#166534; --successbg:#dcfce7;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
-      --shadow: 0 6px 18px rgba(15,23,42,.06); --r:14px;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    :root {
+      /* Nokia brand palette */
+      --nokia-blue:       #005AFF;
+      --nokia-dark-blue:  #001E82;
+      --nokia-cyan:       #00B8F1;
+      --nokia-navy:       #00137F;
+      --nokia-light:      #E8F0FE;
+      /* Semantic */
+      --color-background-primary:   #ffffff;
+      --color-background-secondary: #F2F4F8;
+      --color-background-tertiary:  #F8F9FC;
+      --color-background-info:      #E8F0FE;
+      --color-background-success:   #E6F4EA;
+      --color-background-warning:   #FEF7E0;
+      --color-background-danger:    #FCE8E8;
+      --color-text-primary:   #0D1B2A;
+      --color-text-secondary: #4A5568;
+      --color-text-tertiary:  #8A96A8;
+      --color-text-info:      #001E82;
+      --color-text-success:   #1E6E34;
+      --color-text-warning:   #7A4F00;
+      --color-text-danger:    #9B2020;
+      --color-border-tertiary:  #E2E8F0;
+      --color-border-secondary: #C8D0DC;
+      --color-border-primary:   #A0AABC;
+      --color-border-info:      #7BA7F5;
+      --color-border-success:   #6AC47A;
+      --color-border-warning:   #F0B429;
+      --color-border-danger:    #F08080;
+      --border-radius-md: 6px;
+      --border-radius-lg: 10px;
+      --border-radius-xl: 14px;
+      --shadow-sm: 0 1px 3px rgba(0,30,130,0.08), 0 1px 2px rgba(0,30,130,0.04);
+      --shadow-md: 0 4px 12px rgba(0,30,130,0.10), 0 2px 4px rgba(0,30,130,0.06);
+      --font-mono: 'Courier New', 'Lucida Console', monospace;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    *{ box-sizing:border-box; }
-    body{ margin:0; font-family:var(--sans); background:var(--bg); color:var(--text); }
-    #cdn-err{ display:none; position:sticky; top:0; z-index:9999; padding:12px 16px; background:#7f1d1d; color:#fff; font-size:13px; text-align:center; }
-    header{
-      height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 22px;
-      background:linear-gradient(135deg,#0b1b47 0%, #071a3a 55%, #08122e 100%); color:#fff;
-      box-shadow: 0 2px 12px rgba(0,0,0,.22);
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: var(--font-sans); font-size: 14px;
+      color: var(--color-text-primary);
+      background: var(--color-background-secondary);
+      margin: 0; -webkit-font-smoothing: antialiased;
     }
-    header .title{ font-weight:800; letter-spacing:.6px; }
-    header .sub{ font-size:12px; opacity:.8; }
-    #root{ max-width: 1350px; margin: 0 auto; padding: 22px 22px 60px; }
-    .card{ background:var(--card); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); padding:16px; margin-bottom:12px; }
-    .row{ display:flex; gap:14px; flex-wrap:wrap; }
-    .col{ flex:1; min-width: 320px; }
-    .label{ font-size:12px; color:var(--muted); margin:0 0 6px; }
-    input, select{ width:100%; padding:9px 10px; border-radius:10px; border:1px solid #cbd5e1; outline:none; background:#fff; font-size:13px; }
-    input:focus, select:focus{ border-color:rgba(37,99,235,.65); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
-    button{ padding:9px 14px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; font-size:13px; font-weight:600; transition: all .15s ease; }
-    button:hover{ background:#f8fafc; }
-    button.primary{ background:var(--blue); border-color:var(--blue); color:#fff; box-shadow:0 10px 18px rgba(37,99,235,.18); }
-    button.primary:hover{ background:var(--blue2); border-color:var(--blue2); }
-    button:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
-    .mono{ font-family:var(--mono); }
-    .small{ font-size:12px; color:var(--muted); line-height:1.55; }
-    .err{ background:var(--dangerbg); border:1px solid #fecaca; color:var(--danger); padding:10px 12px; border-radius:12px; margin-bottom:12px; font-size:13px; font-weight:600; }
-    .ok{ background:var(--successbg); border:1px solid #bbf7d0; color:var(--success); padding:8px 10px; border-radius:12px; margin-top:10px; font-size:12px; font-weight:600; }
-
-    table{ width:100%; border-collapse:collapse; font-size:12px; }
-    thead th{ text-align:left; font-size:11px; color:var(--muted); border-bottom:1px solid var(--border); padding:10px; position:sticky; top:0; background:#fff; white-space:nowrap; }
-    tbody td{ padding:9px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
-    tbody tr:nth-child(2n){ background:#fbfdff; }
-
-    .steps{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .step{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; color:var(--muted); }
-    .step .dot{ width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; background:#eef2ff; color:#3730a3; }
-    .step.active{ border-color: rgba(37,99,235,.35); color:var(--text); }
-    .step.active .dot{ background: rgba(37,99,235,.15); color:var(--blue); }
-    .step.done{ background: rgba(22,101,52,.06); border-color: rgba(22,101,52,.25); }
-    .step.done .dot{ background: rgba(22,101,52,.15); color: var(--success); }
-
-    .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    @media (max-width: 980px){ .grid2{ grid-template-columns:1fr; } .col{ min-width:100%; } }
-
-    .progressWrap{ margin-top:12px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:#f8fafc; }
-    .barOuter{ height:8px; background:#e9eef7; border-radius:999px; overflow:hidden; border:1px solid #dbe4f4; }
-    .barInner{ height:100%; background:var(--blue); width:0%; transition:width .12s ease; }
+    #cdn-err {
+      display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: #9B2020; color: white; text-align: center; padding: 14px 20px;
+      font-family: sans-serif; font-size: 14px; line-height: 1.5;
+    }
+    /* Top nav bar */
+    #nokia-header {
+      background: linear-gradient(135deg, var(--nokia-dark-blue) 0%, var(--nokia-navy) 60%, #001560 100%);
+      color: white; padding: 0 32px; display: flex; align-items: center;
+      justify-content: space-between; height: 56px;
+      box-shadow: 0 2px 8px rgba(0,20,100,0.35);
+    }
+    #nokia-header .brand { display: flex; align-items: center; gap: 16px; }
+    #nokia-header .tool-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); letter-spacing: 0.3px; }
+    #nokia-header .author-tag { font-size: 11px; color: rgba(255,255,255,0.55); letter-spacing: 0.2px; }
+    /* Main content */
+    #root { max-width: 1350px; margin: 0 auto; padding: 28px 28px 64px; min-height: calc(100vh - 56px); }
+    input, select {
+      font-family: var(--font-sans); font-size: 13px; color: var(--color-text-primary);
+      background: white; border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md); padding: 7px 11px; outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus {
+      border-color: var(--nokia-blue);
+      box-shadow: 0 0 0 3px rgba(0,90,255,0.12);
+    }
+    button {
+      font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+      color: var(--color-text-secondary);
+      background: white; border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md); padding: 8px 18px; cursor: pointer;
+      transition: all 0.15s; box-shadow: var(--shadow-sm);
+    }
+    button:hover { background: var(--color-background-secondary); border-color: var(--color-border-primary); box-shadow: var(--shadow-md); }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+    button.primary {
+      background: var(--nokia-blue); color: white;
+      border-color: var(--nokia-blue); box-shadow: 0 2px 8px rgba(0,90,255,0.30);
+    }
+    button.primary:hover { background: #0048CC; border-color: #0048CC; box-shadow: 0 4px 14px rgba(0,90,255,0.40); }
+    strong { font-weight: 600; }
+    h2 { color: var(--color-text-primary); line-height: 1.4; font-weight: 600; }
+    p { line-height: 1.6; }
+    th { white-space: nowrap; }
+    /* Page footer */
+    #page-footer {
+      text-align: center; padding: 20px; margin-top: 48px;
+      font-size: 11px; color: var(--color-text-tertiary);
+      border-top: 1px solid var(--color-border-tertiary);
+    }
+    /* Card & layout */
+    .card {
+      background: var(--color-background-primary);
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-xl);
+      box-shadow: var(--shadow-sm);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .row { display: flex; gap: 14px; flex-wrap: wrap; }
+    .col { flex: 1; min-width: 320px; }
+    .label { font-size: 12px; color: var(--color-text-secondary); margin: 0 0 6px; }
+    .mono { font-family: var(--font-mono); }
+    .small { font-size: 12px; color: var(--color-text-secondary); line-height: 1.55; }
+    .err {
+      background: var(--color-background-danger); border: 1px solid var(--color-border-danger);
+      color: var(--color-text-danger); padding: 10px 12px;
+      border-radius: var(--border-radius-lg); margin-bottom: 12px; font-size: 13px; font-weight: 600;
+    }
+    .ok {
+      background: var(--color-background-success); border: 1px solid var(--color-border-success);
+      color: var(--color-text-success); padding: 8px 10px;
+      border-radius: var(--border-radius-lg); margin-top: 10px; font-size: 12px; font-weight: 600;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      text-align: left; font-size: 11px; color: var(--color-text-secondary);
+      border-bottom: 1px solid var(--color-border-tertiary); padding: 10px;
+      position: sticky; top: 0; background: white; white-space: nowrap;
+    }
+    tbody td { padding: 9px 10px; border-bottom: 1px solid var(--color-border-tertiary); vertical-align: top; }
+    tbody tr:nth-child(2n) { background: var(--color-background-tertiary); }
+    .steps { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .step {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      border-radius: 999px; border: 1px solid var(--color-border-tertiary);
+      background: white; font-size: 12px; color: var(--color-text-secondary);
+    }
+    .step .dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800;
+      background: var(--nokia-light); color: var(--nokia-dark-blue);
+    }
+    .step.active { border-color: rgba(0,90,255,.35); color: var(--color-text-primary); }
+    .step.active .dot { background: rgba(0,90,255,.15); color: var(--nokia-blue); }
+    .step.done { background: var(--color-background-success); border-color: var(--color-border-success); }
+    .step.done .dot { background: rgba(30,110,52,.15); color: var(--color-text-success); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; } .col { min-width: 100%; } }
+    .progressWrap {
+      margin-top: 12px; padding: 12px 14px;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--color-border-tertiary);
+      background: var(--color-background-tertiary);
+    }
+    .barOuter {
+      height: 8px; background: var(--color-background-secondary);
+      border-radius: 999px; overflow: hidden; border: 1px solid var(--color-border-tertiary);
+    }
+    .barInner { height: 100%; background: var(--nokia-blue); width: 0%; transition: width .12s ease; }
   </style>
 </head>
 
 <body>
-  <div id="cdn-err">⚠ Required libraries failed to load. Check connectivity or use offline fallback (download scripts locally).</div>
-  <header>
-    <div>
-      <div class="title">LTE PCI / RSI / TAC Planner</div>
-      <div class="sub">PCI MOD3 rule applied in blocks of 3 sectors (1–3, 4–6, 7–9, …)</div>
+  <div id="cdn-err">
+    ⚠ One or more required libraries failed to load from CDN. Check your internet connection,
+    or download the JS files locally — see the comment in the &lt;head&gt; for instructions.
+  </div>
+  <div id="nokia-header">
+    <div class="brand">
+      <span class="tool-name">4G PCI / RSI / TAC Planner</span>
     </div>
-    <div class="sub">Single‑file HTML</div>
-  </header>
+    <span class="author-tag">by Ankit Jain</span>
+  </div>
 
   <div id="root"></div>
+  <div id="page-footer">
+    4G PCI / RSI / TAC Planner &nbsp;·&nbsp; Author: <strong>Ankit Jain</strong>
+  </div>
 
 <script type="text/babel">
 const { useRef, useState } = React;
@@ -166,8 +274,8 @@ const findCol = (headers, patterns) => {
 };
 
 const detectGisCols = (h) => ({
-  siteName: findCol(h, ["lnbts","site name","sitename","site","enodeb","bts"]),
-  cellName: findCol(h, ["lncel","cell name","cellname","cell","sector"]),
+  siteName: findCol(h, ["lnbts","site_name","sitename","site","enodeb","bts"]),
+  cellName: findCol(h, ["lncel","wcell","cell name","cellname","cell","sector"]),
   lat: findCol(h, ["lat","latitude","y_coord","ylat","y"]),
   lon: findCol(h, ["lon","lng","longitude","x_coord","xlon","x"]),
 });

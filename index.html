@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Planning Tools</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    :root {
+      --nokia-blue:      #005AFF;
+      --nokia-dark-blue: #001E82;
+      --nokia-navy:      #00137F;
+      --nokia-light:     #E8F0FE;
+      --color-bg:        #F2F4F8;
+      --color-card:      #ffffff;
+      --color-text:      #0D1B2A;
+      --color-muted:     #4A5568;
+      --color-border:    #E2E8F0;
+      --shadow-sm: 0 1px 3px rgba(0,30,130,0.08), 0 1px 2px rgba(0,30,130,0.04);
+      --shadow-md: 0 4px 20px rgba(0,30,130,0.12), 0 2px 6px rgba(0,30,130,0.06);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: var(--font-sans); margin: 0;
+      background: var(--color-bg); color: var(--color-text);
+      -webkit-font-smoothing: antialiased;
+    }
+    #nokia-header {
+      background: linear-gradient(135deg, var(--nokia-dark-blue) 0%, var(--nokia-navy) 60%, #001560 100%);
+      color: white; padding: 0 32px; display: flex; align-items: center;
+      justify-content: space-between; height: 56px;
+      box-shadow: 0 2px 8px rgba(0,20,100,0.35);
+    }
+    #nokia-header .tool-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); }
+    #nokia-header .author-tag { font-size: 11px; color: rgba(255,255,255,0.55); }
+
+    .hero {
+      text-align: center; padding: 60px 24px 40px;
+    }
+    .hero h1 {
+      font-size: 28px; font-weight: 700; margin: 0 0 12px;
+      color: var(--color-text);
+    }
+    .hero p {
+      font-size: 15px; color: var(--color-muted); max-width: 520px;
+      margin: 0 auto; line-height: 1.65;
+    }
+
+    .cards {
+      display: flex; gap: 24px; flex-wrap: wrap;
+      justify-content: center; padding: 0 24px 60px;
+      max-width: 900px; margin: 0 auto;
+    }
+    .tool-card {
+      background: var(--color-card); border: 1px solid var(--color-border);
+      border-radius: 16px; box-shadow: var(--shadow-sm);
+      padding: 32px; flex: 1; min-width: 300px; max-width: 400px;
+      text-decoration: none; color: inherit;
+      transition: box-shadow 0.2s, transform 0.15s;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .tool-card:hover {
+      box-shadow: var(--shadow-md); transform: translateY(-2px);
+    }
+    .tool-card .badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 12px;
+      background: var(--nokia-light); color: var(--nokia-dark-blue);
+      font-size: 22px; font-weight: 800;
+    }
+    .tool-card h2 {
+      font-size: 17px; font-weight: 700; margin: 0; color: var(--color-text);
+    }
+    .tool-card .desc {
+      font-size: 13px; color: var(--color-muted); line-height: 1.6; margin: 0;
+    }
+    .tool-card .features {
+      list-style: none; margin: 0; padding: 0;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .tool-card .features li {
+      font-size: 12px; color: var(--color-muted);
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .tool-card .features li::before {
+      content: "›"; color: var(--nokia-blue); font-weight: 700; margin-top: 1px;
+    }
+    .tool-card .cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 600; color: var(--nokia-blue);
+      margin-top: auto; padding-top: 8px;
+    }
+
+    #page-footer {
+      text-align: center; padding: 20px;
+      font-size: 11px; color: #8A96A8;
+      border-top: 1px solid var(--color-border);
+    }
+  </style>
+</head>
+<body>
+  <div id="nokia-header">
+    <div class="tool-name">Network Planning Tools</div>
+    <span class="author-tag">by Ankit Jain</span>
+  </div>
+
+  <div class="hero">
+    <h1>Network Planning Tools</h1>
+    <p>Single-file HTML tools for 2G frequency planning and 4G PCI / RSI / TAC planning. No installation required — open in any modern browser.</p>
+  </div>
+
+  <div class="cards">
+    <a class="tool-card" href="2G-new-Site-planning.html">
+      <div class="badge">2G</div>
+      <h2>2G Frequency Planner</h2>
+      <p class="desc">Assigns BCCH, BSIC (NCC/BCC) and TCH frequencies for new GSM sites against an existing network, respecting reuse distances and BSIC uniqueness constraints.</p>
+      <ul class="features">
+        <li>BCCH tier cascade: clean → T2 → T1 → forced</li>
+        <li>BSIC uniqueness enforced without sacrificing BCCH tier</li>
+        <li>TCH six-pass cascade with sector-order shuffling</li>
+        <li>Interactive map with sector markers</li>
+        <li>Progress bar &amp; async planning (UI stays responsive)</li>
+        <li>Export to XLSX</li>
+      </ul>
+      <span class="cta">Open tool →</span>
+    </a>
+
+    <a class="tool-card" href="4G-PCI-RSI-TAC planning.html">
+      <div class="badge">4G</div>
+      <h2>4G PCI / RSI / TAC Planner</h2>
+      <p class="desc">Assigns LTE Physical Cell ID (PCI), Root Sequence Index (RSI) and Tracking Area Code (TAC) for new eNB sites, with MOD3 group enforcement and RSI gap constraints.</p>
+      <ul class="features">
+        <li>PCI MOD3 rule: unique mod3 class within each block of 3 sectors</li>
+        <li>Radius reduction to satisfy MOD3 (never below MinReuse)</li>
+        <li>RSI intra-site uniqueness + configurable minimum gap</li>
+        <li>TAC inherited from nearest existing site</li>
+        <li>Progress bar &amp; async planning (UI stays responsive)</li>
+        <li>Export to XLSX with QA columns</li>
+      </ul>
+      <span class="cta">Open tool →</span>
+    </a>
+  </div>
+
+  <div id="page-footer">
+    Network Planning Tools &nbsp;·&nbsp; Author: <strong>Ankit Jain</strong>
+  </div>
+</body>
+</html>

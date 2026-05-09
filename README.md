@@ -1,9 +1,21 @@
+# Network Planning Tools
+
+Single-file browser-based tools for 2G and 4G radio network planning — no installation, no server, open in any modern browser.
+
+**Author:** Ankit Jain  
+**Live tool index:** https://ankitnitk.github.io/new-site-planning/
+
+| Tool | File | Description |
+|------|------|-------------|
+| **2G Frequency Planner** | `2G-new-Site-planning.html` | GSM BCCH / BSIC / TCH planning for new sites |
+| **4G PCI / RSI / TAC Planner** | `4G-PCI-RSI-TAC planning.html` | LTE PCI (MOD3) / RSI / TAC planning for new eNBs |
+| **Offline 2G Planner** | `index_offline.html` | 2G planner with all JS libraries bundled locally |
+
+---
+
 # 2G Frequency Planner
 
 A single-file browser-based tool for planning GSM (2G) radio frequencies, BSIC, and neighbour lists for new sites — built on top of an existing network's GIS and parameter exports.
-
-**Author:** Ankit Jain  
-**Live tool:** https://ankitnitk.github.io/2g-freq-planner/
 
 ---
 
@@ -218,6 +230,141 @@ Both sheets have **blue headers** (frozen below row 1) and **freeze panes** afte
 - **Pass 2+ site locking:** sites that achieved a fully `clean` BCCH assignment in the previous pass AND have no other planned site as a T1/T2 neighbour are locked and skipped in subsequent passes. Their planning environment cannot change, so re-running would produce identical results. This significantly reduces computation time for large batches.
 - **Live progress bar:** during planning the Plan button is replaced by a progress bar showing current pass, site count, locked site count, and overall percentage. The event loop is yielded between sites so the UI stays responsive throughout.
 - **Badge accuracy:** after all sectors of a site are planned, a post-processing step upgrades any sector's TCH mode badge to `~ x-sector adj` if a sibling sector's TCH is adjacent (±1), regardless of which sector was planned first.
+
+---
+
+---
+
+# 4G PCI / RSI / TAC Planner
+
+A single-file browser-based tool for planning LTE Physical Cell ID (PCI), Root Sequence Index (RSI), and Tracking Area Code (TAC) for new eNB sites — built on top of an existing network's GIS and 4G parameter exports.
+
+## How to Use
+
+1. Open `4G-PCI-RSI-TAC planning.html` in any modern browser.
+2. **Step 1 — Load data:** upload three files:
+   - **Current network GIS** — one row per existing cell/sector; must contain site name (LNBTS), cell name (LNCEL), latitude, longitude.
+   - **4G Summary sheet** — one row per cell; must contain LNCEL, PCI, RSI, TAC. The planner auto-selects the sheet named "LNCEL Details" if present.
+   - **New Sites file** — one row per sector to plan; must contain site name, latitude, longitude. Sector label column is optional.
+3. **Step 2 — Configure** planning parameters.
+4. **Step 3 — Plan** and review results. Export to Excel.
+
+> The tool merges the GIS and Summary files by cell name (LNCEL) to build the working network. All three inputs are required before planning can begin.
+
+---
+
+## Algorithm Parameters
+
+| Parameter | Default | Range | Description |
+|-----------|---------|-------|-------------|
+| Min reuse distance (km) | 20 | > 0 | Minimum separation between cells assigned the same PCI or RSI. The planner starts at 3× this value and steps down by 10% increments. |
+| Min RSI gap (within site) | 20 | > 0 | RSI values assigned to sectors of the same site must differ by at least this amount (on top of being unique). |
+| PCI min / max | 0 / 503 | 0–503 | Allowed PCI pool. LTE specifies 504 PCIs (0–503). Restrict to a sub-range to limit planned site PCIs to an operator-reserved block. |
+| RSI min / max | 0 / 837 | 0–837 | Allowed RSI pool. LTE Zadoff-Chu root sequence indices are 0–837. |
+
+---
+
+## PCI Planning — MOD3 Rule
+
+LTE requires that sectors sharing strong overlap have distinct PCI mod3 classes (0, 1, 2) to avoid pilot contamination from the primary synchronisation signal (PSS).
+
+### Groups of 3 sectors
+
+The planner enforces MOD3 in **blocks of 3 consecutive sectors per site**: sectors 1–3 form group 1, sectors 4–6 form group 2, and so on. Within each group, the planner tries to assign three PCIs with distinct mod3 classes.
+
+### Assignment algorithm
+
+For each sector (in site-sequential order):
+
+1. Build candidate list from `rotatedRange(pciMin, pciMax)` — a randomly rotated array of the entire PCI pool.
+2. For each reuse radius R (starting at `3 × minReuseKm`, stepping down 10% per iteration, floor at `0.1 × minReuseKm`):
+   - Collect all cells (existing + already-planned) within R km. Remove their PCIs and all intra-site already-assigned PCIs from candidates.
+   - **First sector in group** (or single-sector group): pick via spread scoring (maximise minimum distance to existing used PCIs). MOD3 is N/A.
+   - **Subsequent sectors in group**: first attempt to find a candidate with a different mod3 class from the others already in the group. If a MOD3-compliant candidate exists at this R, assign it.
+   - If MOD3 is not possible at R but normal candidates exist: record the best normal candidate (highest-isolation, first R where candidates appear) as a fallback, then reduce R and retry MOD3.
+   - **Constraint:** radius reduction for MOD3 stops at `minReuseKm`. Below that, distance protection is not sacrificed further for MOD3.
+3. If MOD3 was never possible at any radius ≥ `minReuseKm`: assign the normal fallback candidate (highest-isolation, no MOD3 constraint).
+
+### MOD3 status values
+
+| Status | Meaning |
+|--------|---------|
+| `N/A (group size 1)` | Only one sector in the group — MOD3 does not apply |
+| `N/A (first in group)` | First sector assigned in the group — reference point for the group's mod3 classes |
+| `OK (mod3 unique)` | MOD3 satisfied at the maximum (3× minReuse) radius |
+| `OK (mod3 via reduced radius)` | MOD3 satisfied after reducing radius (still ≥ minReuse) |
+| `Fallback (mod3 not possible)` | No MOD3-compliant PCI found at any radius ≥ minReuse; best normal PCI assigned |
+| `Not possible` | No free PCI exists at any radius (pool exhausted) |
+
+### Spread scoring and tie-breaking
+
+When multiple candidates are valid, the planner picks the one with the **largest minimum distance** to any already-used PCI in the candidate set — maximising spectral separation. Ties are broken uniformly at random using reservoir sampling (`seen++; if (Math.random() < 1/seen) choose current`), so every equally good candidate has equal probability.
+
+---
+
+## RSI Planning
+
+RSI (Root Sequence Index) is used by the LTE PRACH (random access channel). Sectors with the same RSI within a close range cause PRACH ambiguity.
+
+### Constraints
+
+- **Intra-site uniqueness:** sectors of the same site can never share an RSI (hard constraint).
+- **Intra-site gap:** RSI values within the same site must differ by at least `minRsiGap`. This prevents Zadoff-Chu root sequences that are close in index from producing nearly-identical preamble sets.
+- **Reuse distance:** no RSI may be reused within the same radius cascade used for PCI (`3 × minReuseKm` → `0.1 × minReuseKm`).
+
+### Assignment
+
+The pool is `rotatedRange(rsiMin, rsiMax)`. For each radius R (same cascade as PCI), the planner filters out:
+1. RSIs used by any cell within R km (existing or planned).
+2. RSIs already assigned to other sectors of the same site.
+3. RSIs that would violate the intra-site `minRsiGap`.
+
+The first radius where a valid candidate exists is used. Spread scoring with reservoir-sampling tie-break applies (same as PCI).
+
+---
+
+## TAC Planning
+
+Tracking Area Code (TAC) defines the tracking area — a grouping of cells for UE paging efficiency. TAC boundaries are set by the existing network topology, not by new site additions.
+
+**Rule:** each new site inherits the TAC of its **nearest existing site** (by haversine distance to site centroid). If the nearest existing site has multiple TAC values (mixed cells), the most frequent TAC is used; ties are broken by smallest TAC value.
+
+TAC is the same for all sectors of the same new site. It is looked up from `baseCells` (existing network) only — other planned-but-not-yet-existing sites do not influence each other's TAC.
+
+---
+
+## Output Columns
+
+| Column | Description |
+|--------|-------------|
+| New Site Name | Site identifier from the New Sites input |
+| New Site ID | Site ID column if present in the New Sites input (else same as name) |
+| Lat / Long | Site coordinates |
+| Planned PCI | Assigned PCI, or `Not possible` if pool exhausted |
+| PCI reuse distance (km) | Actual reuse radius used for this PCI assignment |
+| PCI MOD3 Group | Block-of-3 group number (1 = sectors 1–3, 2 = sectors 4–6, …) |
+| PCI MOD3 Class | `mod3(PCI)` — 0, 1, or 2 |
+| PCI MOD3 Status | See MOD3 status values table above |
+| Nearest same-PCI cell (QA) | Cell name of the nearest existing or planned cell with the same PCI |
+| Same-PCI distance (km) (QA) | Distance to that cell; `∞` if the PCI is globally unique |
+| Planned RSI | Assigned RSI, or `Not possible` if pool exhausted |
+| RSI reuse distance (km) | Actual reuse radius used for this RSI assignment |
+| Nearest same-RSI cell (QA) | Cell name of the nearest cell with the same RSI |
+| Same-RSI distance (km) (QA) | Distance to that cell; `∞` if globally unique |
+| Planned TAC | Inherited TAC from nearest existing site |
+| Nearest Site Name | Name of the existing site whose TAC was inherited |
+| Remark | Warning if any existing site within MinReuse has unknown PCI or RSI (may affect planning quality) |
+
+---
+
+## Technical Notes (4G)
+
+- **No server, no install** — pure client-side HTML/JS. Open directly in any modern browser.
+- **Online tool** loads React, Babel, and xlsx-js-style from CDN — internet required on first load.
+- **Column auto-detection:** the planner recognises common column name variants for LNBTS, LNCEL, lat, lon, PCI, RSI, TAC automatically. Manual override via the column mapping dropdowns.
+- **Async progress bar:** planning yields to the browser between sectors, keeping the UI responsive. A live progress bar shows current site name and percentage.
+- **Randomised pool rotation:** `rotatedRange()` starts at a random offset within the pool so repeated planning runs produce varied-but-valid results without systematic low-value bias.
+- **Existing + planned cells:** during planning, already-planned sectors are added to the working set so later sites see them as constraints — avoiding conflicts between newly planned cells, not just conflicts with the existing network.
 
 ---
 
