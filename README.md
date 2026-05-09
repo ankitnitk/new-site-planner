@@ -37,7 +37,7 @@
 ![4G Planner — Results](docs/screenshots/4g-results.png)
 *Results — Planned PCI (with MOD3 status), RSI and TAC per sector, exportable to XLSX*
 
-> 📸 **To add your own screenshots:** take a screenshot of each step, save to `docs/screenshots/` and push. The image names above are already wired up.
+> 📸 **To add screenshots:** use the generic sample data files in [`docs/sample-data/`](docs/sample-data/) — they contain no real network data. Load them into the tool, take a screenshot of each step, save to `docs/screenshots/` with the filenames above, and push.
 
 ---
 
