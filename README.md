@@ -1,15 +1,55 @@
 # Network Planning Tools
 
-Single-file browser-based tools for 2G and 4G radio network planning — no installation, no server, open in any modern browser.
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-005AFF?style=for-the-badge&logo=github)](https://ankitnitk.github.io/new-site-planner/)
+[![2G Planner](https://img.shields.io/badge/2G-Frequency%20Planner-001E82?style=for-the-badge)](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning.html)
+[![4G Planner](https://img.shields.io/badge/4G-PCI%20%2F%20RSI%20%2F%20TAC%20Planner-00137F?style=for-the-badge)](https://ankitnitk.github.io/new-site-planner/4G-PCI-RSI-TAC%20planning.html)
 
-**Author:** Ankit Jain  
-**Live tool index:** https://ankitnitk.github.io/new-site-planner/
+> **Single-file HTML tools for GSM and LTE radio network planning.**  
+> No installation. No server. No sign-up. Just open in a browser, upload your exports, and get a planned frequency/PCI output in seconds.
 
-| Tool | File | Description |
-|------|------|-------------|
-| **2G Frequency Planner** | `2G-new-Site-planning.html` | GSM BCCH / BSIC / TCH planning for new sites |
-| **4G PCI / RSI / TAC Planner** | `4G-PCI-RSI-TAC planning.html` | LTE PCI (MOD3) / RSI / TAC planning for new eNBs |
-| **Offline 2G Planner** | `index_offline.html` | 2G planner with all JS libraries bundled locally |
+**Author:** Ankit Jain
+
+---
+
+## Tools
+
+| Tool | Description | Live |
+|------|-------------|------|
+| **2G Frequency Planner** | Assigns BCCH, BSIC (NCC/BCC) and TCH frequencies for new GSM sites against an existing network | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning.html) |
+| **4G PCI / RSI / TAC Planner** | Assigns LTE PCI (with MOD3 enforcement), RSI and TAC for new eNB sites | [Open ↗](https://ankitnitk.github.io/new-site-planner/4G-PCI-RSI-TAC%20planning.html) |
+| **Offline 2G Planner** | Same as 2G planner but all JS bundled locally — no internet needed | [Open ↗](https://ankitnitk.github.io/new-site-planner/index_offline.html) |
+
+---
+
+## Screenshots
+
+### 2G Frequency Planner
+![2G Planner — Step 1: Upload files](docs/screenshots/2g-step1.png)
+*Step 1 — Upload GIS database, CMExport parameters, and new sites file*
+
+![2G Planner — Results](docs/screenshots/2g-results.png)
+*Results — BCCH, BSIC, TCH and neighbour plan per sector, exportable to XLSX*
+
+### 4G PCI / RSI / TAC Planner
+![4G Planner — Step 1: Upload files](docs/screenshots/4g-step1.png)
+*Step 1 — Upload GIS, 4G Summary and new sites file*
+
+![4G Planner — Results](docs/screenshots/4g-results.png)
+*Results — Planned PCI (with MOD3 status), RSI and TAC per sector, exportable to XLSX*
+
+> 📸 **To add your own screenshots:** take a screenshot of each step, save to `docs/screenshots/` and push. The image names above are already wired up.
+
+---
+
+## Why use these tools?
+
+RF planning engineers typically do new-site frequency and PCI assignment manually — cross-referencing spreadsheets, checking reuse distances by eye, and iterating through neighbour lists. These tools automate the constraint logic:
+
+- **Correct by construction** — reuse distances, tier constraints, MOD3 groups, RSI gaps and BSIC uniqueness are all enforced algorithmically, not checked after the fact
+- **Instant** — plans hundreds of sectors in seconds, with a live progress bar
+- **Portable** — a single `.html` file you can email, share on SharePoint, or open offline
+- **Transparent** — every assignment shows *why* it was made (tier mode, reuse distance, MOD3 status)
+- **Exportable** — one-click XLSX output ready for NMS import or review
 
 ---
 
