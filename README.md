@@ -303,6 +303,7 @@ A single-file browser-based tool for planning LTE Physical Cell ID (PCI), Root S
 | Min RSI gap (within site) | 20 | > 0 | RSI values assigned to sectors of the same site must differ by at least this amount (on top of being unique). |
 | PCI min / max | 0 / 503 | 0–503 | Allowed PCI pool. LTE specifies 504 PCIs (0–503). Restrict to a sub-range to limit planned site PCIs to an operator-reserved block. |
 | RSI min / max | 0 / 837 | 0–837 | Allowed RSI pool. LTE Zadoff-Chu root sequence indices are 0–837. |
+| Planning passes | 3 | ≥ 1 | Number of multi-pass Jacobi iterations (see Technical Notes). Pass 1 = sequential greedy; passes 2+ re-plan each unlocked site using all other sites' previous-pass assignments. |
 
 ---
 
@@ -404,13 +405,36 @@ TAC is the same for all sectors of the same new site. It is looked up from `base
 - **No server, no install** — pure client-side HTML/JS. Open directly in any modern browser.
 - **Online tool** loads React, Babel, and xlsx-js-style from CDN — internet required on first load.
 - **Column auto-detection:** the planner recognises common column name variants for LNBTS, LNCEL, lat, lon, PCI, RSI, TAC automatically. Manual override via the column mapping dropdowns.
-- **Async progress bar:** planning yields to the browser between sectors, keeping the UI responsive. A live progress bar shows current site name and percentage.
+- **Async progress bar:** planning yields to the browser between sites, keeping the UI responsive. A live progress bar shows current pass, site name, locked count, and percentage.
 - **Randomised pool rotation:** `rotatedRange()` starts at a random offset within the pool so repeated planning runs produce varied-but-valid results without systematic low-value bias.
 - **Existing + planned cells:** during planning, already-planned sectors are added to the working set so later sites see them as constraints — avoiding conflicts between newly planned cells, not just conflicts with the existing network.
+- **Multi-pass Jacobi iteration:** sites are first planned sequentially (pass 1). In passes 2+, each site is re-planned using all *other* sites' PCI/RSI assignments from the previous pass as constraints, removing order-dependency bias. The best-scoring pass (fewest `Not possible` sectors, then fewest MOD3 fallbacks, then fewest reduced-radius MOD3) is returned. Configurable via the `Planning passes` parameter (default 3).
+- **Pass 2+ site locking:** a site is locked (skipped in passes 2+) when every sector has PCI and RSI assigned with reuse distance > minReuse and MOD3 status = unique/N/A, AND no other planned site is within 3×minReuse (the full candidate search radius). Locked sites are copied from the previous pass without re-planning — their environment cannot change so the result would be identical.
 
 ---
 
 ## Changelog
+
+### 2026-05-12
+
+#### 4G: Multi-pass Jacobi iteration
+
+Added multi-pass refinement to the 4G PCI / RSI / TAC planner, mirroring the approach already used in the 2G planner.
+
+**Pass 1** is unchanged sequential greedy — each new site is planned in order, seeing all previously-planned sites as constraints.
+
+**Passes 2..N** use Jacobi iteration: each site is re-planned using all *other* sites' PCI/RSI assignments from the previous pass, removing the order-dependency bias inherent in a single sequential pass. The best-scoring pass is kept.
+
+**Scoring** (lexicographic, lower is better):
+1. Count of sectors where PCI or RSI is `Not possible` (hard failures)
+2. Count of sectors with MOD3 status `Fallback (mod3 not possible)`
+3. Count of sectors with MOD3 status `OK (mod3 via reduced radius)`
+
+**Site locking:** a site is locked (skipped in passes 2+) when every sector satisfies all of: PCI assigned with reuse distance > minReuse, RSI assigned with reuse distance > minReuse, and MOD3 status = unique or N/A — AND no other planned site is within 3×minReuse (the full candidate search radius). Locked sites are copied from the previous pass without re-planning.
+
+**UI:** a `Planning passes` field (default 3) is added to the Step 2 configuration. The progress bar shows `Pass X/Y`, sector count, and locked-site count during passes 2+.
+
+---
 
 ### 2026-05-04 (update 2)
 
