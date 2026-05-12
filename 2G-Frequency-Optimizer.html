@@ -1189,8 +1189,8 @@ function App() {
           ...(optWhat==='bsic_only'
             ? {secResults:site.sectors.map((sec,idx)=>({idx,cellName:sec.cellName,bcch:sec.bcch,oldNcc:sec.ncc,oldBcc:sec.bcc,newNcc:sec.ncc,newBcc:sec.bcc,changed:false,changeType:'none'}))}
             : {sectorResults:site.sectors.map((sec,idx)=>({idx,az:parseFloat(sec.azimuth)||0,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,bcchMode:auditResult.siteAudits.find(a=>a.siteName===site.name)?.sectorAudits[idx]?.bcchMode||'clean',tch900List:(sec.tchList||[]).filter(t=>isArfcn900(t)),tch1800List:(sec.tchList||[]).filter(t=>isArfcn1800(t)),bsicRepeatDist:auditResult.siteAudits.find(a=>a.siteName===site.name)?.sectorAudits[idx]?.bsicRepeatDist??null}))})
-          )
         }));
+
         optOutput=origOut;
         setErr(`Optimizer could not improve the plan (score ${newScore} vs original ${origScore}) — showing original assignments unchanged. Try increasing planning passes or adjusting the BCCH pool.`);
       }
