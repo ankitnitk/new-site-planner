@@ -525,15 +525,29 @@ function planOneSite(site,workingCells,cfg) {
   return sectorResults;
 }
 
-// ── planAllSites (verbatim from 2G planner) ────────────────────────────────────
+// ── planAllSites ───────────────────────────────────────────────────────────────
+// warmVCells: optional {siteName -> vcell[]} — if supplied pass 1 is also Jacobi
+// (optimizer mode: each site sees all other sites' original BCCHs as constraints)
 const yield_ = () => new Promise(r => setTimeout(r, 0));
-async function planAllSites(sites,baseCells,cfg,onProgress) {
+async function planAllSites(sites,baseCells,cfg,onProgress,warmVCells) {
   const maxPasses=Math.max(1,cfg.maxPasses??3);
   const toVCell=(site,r)=>({cellName:`${site.name}_S${r.idx+1}`,siteName:site.name,lat:parseFloat(site.lat),lon:parseFloat(site.lon),azimuth:r.az,bcch:r.bcch,tchList:[...r.tch900List,...r.tch1800List],ncc:r.ncc,bcc:r.bcc,lac:r.lac,rac:r.rac,bsc:r.bsc,isPlanned:true});
-  const scorePass=results=>{let deg=0,conf=0;results.forEach(({sectorResults})=>{sectorResults.forEach(r=>{if(r.bcchMode!=='clean')deg++;if(r.tier1BCCHs&&r.tier1BCCHs.includes(r.bcch))conf++;});});return [deg,conf];};
-  const isBetter=(a,b)=>a[0]<b[0]||(a[0]===b[0]&&a[1]<b[1]);
+  const scorePass=results=>{let deg=0;results.forEach(({sectorResults})=>{sectorResults.forEach(r=>{if(r.bcchMode!=='clean')deg++;});});return deg;};
   let lastResults=[];
-  {
+  if(warmVCells){
+    // Optimizer pass 1: Jacobi seeded with original assignments
+    for(let i=0;i<sites.length;i++){
+      const site=sites[i];
+      onProgress&&onProgress(1,i,sites.length,maxPasses,0);
+      await yield_();
+      const wc=[...baseCells];
+      sites.forEach(s=>{if(s.name!==site.name)(warmVCells[s.name]||[]).forEach(vc=>wc.push(vc));});
+      const sectorResults=planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors},wc,cfg);
+      lastResults.push({site,sectorResults});
+    }
+    onProgress&&onProgress(1,sites.length,sites.length,maxPasses,0);
+  } else {
+    // New-site planner pass 1: sequential greedy
     let wc=[...baseCells];
     for(let i=0;i<sites.length;i++){
       const site=sites[i];
@@ -549,7 +563,7 @@ async function planAllSites(sites,baseCells,cfg,onProgress) {
   for(let pass=2;pass<=maxPasses;pass++){
     const prevVCells={};
     lastResults.forEach(({site,sectorResults})=>{prevVCells[site.name]=sectorResults.map(r=>toVCell(site,r));});
-    const locked=new Set(lastResults.filter(({sectorResults})=>sectorResults.every(r=>r.bcchMode==='clean')&&!sectorResults.some(r=>r.externalNeighbors.some(nb=>nb.isPlanned))).map(({site})=>site.name));
+    const locked=new Set(lastResults.filter(({sectorResults})=>sectorResults.every(r=>r.bcchMode==='clean')&&!sectorResults.some(r=>r.externalNeighbors&&r.externalNeighbors.some(nb=>nb.isPlanned))).map(({site})=>site.name));
     const nextResults=[];
     for(let i=0;i<sites.length;i++){
       const site=sites[i];
@@ -565,7 +579,7 @@ async function planAllSites(sites,baseCells,cfg,onProgress) {
     await yield_();
     lastResults=nextResults;
     const s=scorePass(nextResults);
-    if(isBetter(s,bestScore)){bestScore=s;bestResults=nextResults;}
+    if(s<bestScore){bestScore=s;bestResults=nextResults;}
   }
   return bestResults;
 }
@@ -1127,10 +1141,23 @@ function App() {
           return {site,secResults:site.sectors.map((sec,idx)=>({idx,cellName:sec.cellName,bcch:sec.bcch,oldNcc:sec.ncc,oldBcc:sec.bcc,newNcc:sec.ncc,newBcc:sec.bcc,changed:false,changeType:'none'}))};
         });
       } else {
+        // Build warm-start vcells from original opt-site assignments so pass 1 is
+        // also Jacobi — every site sees all other opt sites' existing BCCHs upfront
+        const warmVCells={};
+        sitesToPlan.forEach(site=>{
+          warmVCells[site.name]=site.sectors.map((sec,idx)=>({
+            cellName:sec.cellName||`${site.name}_S${idx+1}`, siteName:site.name,
+            lat:parseFloat(site.lat), lon:parseFloat(site.lon),
+            azimuth:parseFloat(sec.azimuth)||0,
+            bcch:sec.bcch, ncc:sec.ncc, bcc:sec.bcc, tchList:sec.tchList||[],
+            isPlanned:true
+          }));
+        });
         const rawOut=await planAllSites(
           sitesToPlan.map(s=>({...s,sectors:s.sectors.map(sec=>({...sec,trx900:sec.trx900||1,trx1800:sec.trx1800||0}))})),
           effectiveBase, cfgWithPasses,
-          (pass,i,total,totalPasses,locked)=>setProg({pass,totalPasses,done:i,total,siteName:sitesToPlan[i]?.name||"",locked})
+          (pass,i,total,totalPasses,locked)=>setProg({pass,totalPasses,done:i,total,siteName:sitesToPlan[i]?.name||"",locked}),
+          warmVCells
         );
         optOutput=optSites.map(site=>{
           const planned=rawOut.find(r=>r.site.name===site.name);
@@ -1139,23 +1166,40 @@ function App() {
         });
       }
 
-      // Build result rows
-      const rRows=buildResultRows(optSites,auditResult,optOutput,optWhat,baseCells,cfg);
-
-      // Post-audit for after-summary
-      const newNetwork=optOutput.flatMap(({site,sectorResults,secResults})=>{
+      // Post-audit — compare against original; fall back if optimizer made things worse
+      const buildNetwork=out=>out.flatMap(({site,sectorResults,secResults})=>{
         const sectors=sectorResults||secResults;
         return sectors.map((r,i)=>({
-          siteName:site.name,cellName:site.sectors[i]?.cellName||`${site.name}_S${i+1}`,
-          lat:site.lat,lon:site.lon,azimuth:site.sectors[i]?.azimuth||0,
+          siteName:site.name, cellName:site.sectors[i]?.cellName||`${site.name}_S${i+1}`,
+          lat:site.lat, lon:site.lon, azimuth:site.sectors[i]?.azimuth||0,
           bcch:optWhat==='bsic_only'?r.bcch:(r.bcch??site.sectors[i]?.bcch),
           ncc:optWhat==='bsic_only'?r.newNcc:(r.ncc??site.sectors[i]?.ncc),
           bcc:optWhat==='bsic_only'?r.newBcc:(r.bcc??site.sectors[i]?.bcc),
           tchList:optWhat==='bsic_only'?site.sectors[i]?.tchList||[]:([...(r.tch900List||[]),(r.tch1800List||[])]),
         }));
       });
-      const afterNetwork=[...baseCells,...newNetwork];
+      const candidateNetwork=buildNetwork(optOutput);
+      const candidateAudit=auditAllSites(optSites,[...baseCells,...candidateNetwork],cfg);
+      const origScore=auditResult.summary.t1+auditResult.summary.cosite+auditResult.summary.t2;
+      const newScore=candidateAudit.summary.t1+candidateAudit.summary.cosite+candidateAudit.summary.t2;
+      if(newScore>origScore){
+        // Optimizer degraded the plan — revert to original assignments
+        const origOut=optSites.map(site=>({
+          site,
+          ...(optWhat==='bsic_only'
+            ? {secResults:site.sectors.map((sec,idx)=>({idx,cellName:sec.cellName,bcch:sec.bcch,oldNcc:sec.ncc,oldBcc:sec.bcc,newNcc:sec.ncc,newBcc:sec.bcc,changed:false,changeType:'none'}))}
+            : {sectorResults:site.sectors.map((sec,idx)=>({idx,az:parseFloat(sec.azimuth)||0,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,bcchMode:auditResult.siteAudits.find(a=>a.siteName===site.name)?.sectorAudits[idx]?.bcchMode||'clean',tch900List:(sec.tchList||[]).filter(t=>isArfcn900(t)),tch1800List:(sec.tchList||[]).filter(t=>isArfcn1800(t)),bsicRepeatDist:auditResult.siteAudits.find(a=>a.siteName===site.name)?.sectorAudits[idx]?.bsicRepeatDist??null}))})
+          )
+        }));
+        optOutput=origOut;
+        setErr(`Optimizer could not improve the plan (score ${newScore} vs original ${origScore}) — showing original assignments unchanged. Try increasing planning passes or adjusting the BCCH pool.`);
+      }
+
+      // Post-audit for after-summary (reuse buildNetwork on final optOutput)
+      const finalNetwork=buildNetwork(optOutput);
+      const afterNetwork=[...baseCells,...finalNetwork];
       const afterAudit=auditAllSites(optSites,afterNetwork,cfg);
+      const rRows=buildResultRows(optSites,auditResult,optOutput,optWhat,baseCells,cfg);
       setAfterSummary(afterAudit.summary);
       setResults(optOutput);
       setResultRows(rRows);
