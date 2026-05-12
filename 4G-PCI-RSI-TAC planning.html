@@ -581,113 +581,177 @@ function nearestSiteTac({ baseCells, siteLat, siteLon }) {
 }
 
 /* =========================
-   Async planner with progress (yield to UI)
+   Per-site planner (synchronous)
+   workCells = baseCells + other planned sites' virtual cells from prior pass.
+   baseCells = original network only (TAC lookup + remark always use existing network).
+   ========================= */
+function planSite(site, workCells, baseCells, cfg) {
+  const localVcells = [];
+  const rows = [];
+  const siteAssignedPcis = [];
+  const siteAssignedRsis = [];
+  const groupAssigned = [];
+  const total = site.sectors.length;
+  const { nearestSite, tac } = nearestSiteTac({ baseCells, siteLat: site.lat, siteLon: site.lon });
+
+  for (let ti = 0; ti < total; ti++) {
+    const work = [...workCells, ...localVcells];
+    const groupIndex = Math.floor(ti / 3);
+    const groupSize = Math.min(3, total - groupIndex * 3);
+    if (!groupAssigned[groupIndex]) groupAssigned[groupIndex] = [];
+    const groupAssignedPcis = groupAssigned[groupIndex];
+
+    const pciRes = assignPCI({
+      siteAssignedPcis, groupAssignedPcis, allCells: work,
+      siteLat: site.lat, siteLon: site.lon,
+      pciMin: cfg.pciMin, pciMax: cfg.pciMax,
+      minReuseKm: cfg.minReuseKm, groupSize, groupIndex
+    });
+    if (pciRes.value !== null) { siteAssignedPcis.push(pciRes.value); groupAssignedPcis.push(pciRes.value); }
+
+    const rsiRes = assignRSI({
+      siteAssignedRsis, allCells: work,
+      siteLat: site.lat, siteLon: site.lon,
+      rsiMin: cfg.rsiMin, rsiMax: cfg.rsiMax,
+      minReuseKm: cfg.minReuseKm, minGap: cfg.minRsiGap
+    });
+    if (rsiRes.value !== null) siteAssignedRsis.push(rsiRes.value);
+
+    const pciQA = pciRes.value !== null ? nearestSameValueInfo(work, site.lat, site.lon, "pci", pciRes.value) : { cell:"", km:"" };
+    const rsiQA = rsiRes.value !== null ? nearestSameValueInfo(work, site.lat, site.lon, "rsi", rsiRes.value) : { cell:"", km:"" };
+    const remark = nearestUnknownRemark(baseCells, site.lat, site.lon, cfg.minReuseKm);
+
+    rows.push({
+      "New Site Name": site.name,
+      "New Site ID": site.siteId || "",
+      "Lat": site.lat,
+      "Long": site.lon,
+      "Planned PCI": pciRes.value !== null ? pciRes.value : "Not possible",
+      "PCI reuse distance (km)": pciRes.reuseKm !== null ? (Math.round(pciRes.reuseKm * 1000) / 1000) : "",
+      "PCI MOD3 Group": pciRes.value !== null ? pciRes.mod3Group : (Math.floor(ti/3)+1),
+      "PCI MOD3 Class": pciRes.value !== null ? pciRes.mod3Class : "",
+      "PCI MOD3 Status": pciRes.value !== null ? pciRes.mod3Status : "Not possible",
+      "Nearest same-PCI cell (QA)": pciRes.value !== null ? pciQA.cell : "",
+      "Same-PCI distance (km) (QA)": pciRes.value !== null ? pciQA.km : "",
+      "Planned RSI": rsiRes.value !== null ? rsiRes.value : "Not possible",
+      "RSI reuse distance (km)": rsiRes.reuseKm !== null ? (Math.round(rsiRes.reuseKm * 1000) / 1000) : "",
+      "Nearest same-RSI cell (QA)": rsiRes.value !== null ? rsiQA.cell : "",
+      "Same-RSI distance (km) (QA)": rsiRes.value !== null ? rsiQA.km : "",
+      "Planned TAC": tac || "",
+      "Nearest Site Name": nearestSite || "",
+      "Remark": remark
+    });
+
+    localVcells.push({
+      siteName: site.name,
+      cellName: `${site.name}_${site.sectors[ti].label || ("S"+(ti+1))}`,
+      lat: site.lat, lon: site.lon,
+      pci: (pciRes.value !== null && !isNaN(pciRes.value)) ? pciRes.value : null,
+      rsi: (rsiRes.value !== null && !isNaN(rsiRes.value)) ? rsiRes.value : null,
+      tac: tac || null
+    });
+  }
+
+  return { rows, vcells: localVcells };
+}
+
+/* =========================
+   Async planner with progress + multi-pass Jacobi iteration
    ========================= */
 const yield_ = () => new Promise(r => setTimeout(r, 0));
 
 async function planAllAsync(plannedSites, baseCells, cfg, onProgress) {
-  const out = [];
-  const plannedSectors = [];
-  const allCells = () => [...baseCells, ...plannedSectors];
+  const maxPasses   = Math.max(1, Number(cfg.maxPasses) || 1);
+  const minReuseKm  = Number(cfg.minReuseKm);
+  const maxSearchKm = 3 * minReuseKm;
+  const totalSectors = plannedSites.reduce((s, p) => s + (p.sectors?.length || 0), 0);
 
-  const totalSectors = plannedSites.reduce((s,p)=>s + (p.sectors?.length || 0), 0);
-  let done = 0;
+  // Score: [notPossible, mod3Fallback, reducedRadius] — lower is better, lexicographic.
+  const scorePass = (results) => {
+    let np = 0, fb = 0, rr = 0;
+    results.forEach(({ rows }) => rows.forEach(r => {
+      if (String(r["Planned PCI"]) === "Not possible" || String(r["Planned RSI"]) === "Not possible") np++;
+      const m3 = r["PCI MOD3 Status"];
+      if (m3 === "Fallback (mod3 not possible)") fb++;
+      else if (m3 === "OK (mod3 via reduced radius)") rr++;
+    }));
+    return [np, fb, rr];
+  };
 
-  for (let si=0; si<plannedSites.length; si++) {
-    const site = plannedSites[si];
-    const siteAssignedPcis = [];
-    const siteAssignedRsis = [];
+  const isBetter = (a, b) =>
+    a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] : a[2] < b[2];
 
-    // MOD3 groups: block-of-3 tracking
-    const groupAssigned = []; // array of arrays; groupAssigned[g] = [pcis...]
-    const total = site.sectors.length;
+  // Lock a site when both conditions hold:
+  //   1. Every sector: PCI assigned + reuse > minReuse, RSI assigned + reuse > minReuse,
+  //      MOD3 status = unique (or N/A — single-sector / first-in-group).
+  //   2. No other planned site within 3×minReuse (the full candidate search radius),
+  //      so no other planned site's assignment can affect this site's pool.
+  const isLocked = ({ site, rows }) => {
+    if (!rows.every(r => {
+      const m3 = r["PCI MOD3 Status"];
+      return String(r["Planned PCI"]) !== "Not possible" &&
+             Number(r["PCI reuse distance (km)"]) > minReuseKm &&
+             String(r["Planned RSI"]) !== "Not possible" &&
+             Number(r["RSI reuse distance (km)"]) > minReuseKm &&
+             (m3 === "OK (mod3 unique)" || m3 === "N/A (first in group)" || m3 === "N/A (group size 1)");
+    })) return false;
+    return plannedSites.every(other =>
+      other.name === site.name || haversineKm(site.lat, site.lon, other.lat, other.lon) > maxSearchKm
+    );
+  };
 
-    // TAC is looked up from existing network only (baseCells), not from other planned sites —
-    // TAC boundaries are defined by the existing network topology, not by new site additions.
-    const { nearestSite, tac } = nearestSiteTac({ baseCells, siteLat: site.lat, siteLon: site.lon });
-
-    for (let ti=0; ti<site.sectors.length; ti++) {
-      onProgress && onProgress({ done, total: totalSectors, siteName: site.name, sectorIndex: ti, phase: "planning" });
+  // Pass 1: sequential greedy — later sites see earlier sites' assignments.
+  let lastResults = [];
+  {
+    const wc = [...baseCells];
+    let done = 0;
+    for (let si = 0; si < plannedSites.length; si++) {
+      const site = plannedSites[si];
+      onProgress && onProgress({ pass: 1, totalPasses: maxPasses, done, total: totalSectors, siteName: site.name, locked: 0 });
       await yield_();
-
-      const work = allCells();
-
-      const groupIndex = Math.floor(ti / 3);
-      const groupSize = Math.min(3, total - groupIndex*3); // last group can be 1 or 2
-      if (!groupAssigned[groupIndex]) groupAssigned[groupIndex] = [];
-      const groupAssignedPcis = groupAssigned[groupIndex];
-
-      const pciRes = assignPCI({
-        siteAssignedPcis,
-        groupAssignedPcis,
-        allCells: work,
-        siteLat: site.lat, siteLon: site.lon,
-        pciMin: cfg.pciMin, pciMax: cfg.pciMax,
-        minReuseKm: cfg.minReuseKm,
-        groupSize,
-        groupIndex
-      });
-
-      if (pciRes.value !== null) {
-        siteAssignedPcis.push(pciRes.value);
-        groupAssignedPcis.push(pciRes.value);
-      }
-
-      const rsiRes = assignRSI({
-        siteAssignedRsis,
-        allCells: work,
-        siteLat: site.lat, siteLon: site.lon,
-        rsiMin: cfg.rsiMin, rsiMax: cfg.rsiMax,
-        minReuseKm: cfg.minReuseKm,
-        minGap: cfg.minRsiGap
-      });
-      if (rsiRes.value !== null) siteAssignedRsis.push(rsiRes.value);
-
-      const pciQA = pciRes.value !== null ? nearestSameValueInfo(work, site.lat, site.lon, "pci", pciRes.value) : { cell:"", km:"" };
-      const rsiQA = rsiRes.value !== null ? nearestSameValueInfo(work, site.lat, site.lon, "rsi", rsiRes.value) : { cell:"", km:"" };
-      const remark = nearestUnknownRemark(baseCells, site.lat, site.lon, cfg.minReuseKm);
-
-      out.push({
-        "New Site Name": site.name,
-        "New Site ID": site.siteId || "",
-        "Lat": site.lat,
-        "Long": site.lon,
-
-        "Planned PCI": pciRes.value !== null ? pciRes.value : "Not possible",
-        "PCI reuse distance (km)": pciRes.reuseKm !== null ? (Math.round(pciRes.reuseKm * 1000) / 1000) : "",
-        "PCI MOD3 Group": pciRes.value !== null ? pciRes.mod3Group : (Math.floor(ti/3)+1),
-        "PCI MOD3 Class": pciRes.value !== null ? pciRes.mod3Class : "",
-        "PCI MOD3 Status": pciRes.value !== null ? pciRes.mod3Status : "Not possible",
-        "Nearest same-PCI cell (QA)": pciRes.value !== null ? pciQA.cell : "",
-        "Same-PCI distance (km) (QA)": pciRes.value !== null ? pciQA.km : "",
-
-        "Planned RSI": rsiRes.value !== null ? rsiRes.value : "Not possible",
-        "RSI reuse distance (km)": rsiRes.reuseKm !== null ? (Math.round(rsiRes.reuseKm * 1000) / 1000) : "",
-        "Nearest same-RSI cell (QA)": rsiRes.value !== null ? rsiQA.cell : "",
-        "Same-RSI distance (km) (QA)": rsiRes.value !== null ? rsiQA.km : "",
-
-        "Planned TAC": tac || "",
-        "Nearest Site Name": nearestSite || "",
-        "Remark": remark
-      });
-
-      plannedSectors.push({
-        siteName: site.name,
-        cellName: `${site.name}_${site.sectors[ti].label || ("S"+(ti+1))}`,
-        lat: site.lat, lon: site.lon,
-        pci: (pciRes.value !== null && !isNaN(pciRes.value)) ? pciRes.value : null,
-        rsi: (rsiRes.value !== null && !isNaN(rsiRes.value)) ? rsiRes.value : null,
-        tac: tac || null
-      });
-
-      done++;
-      onProgress && onProgress({ done, total: totalSectors, siteName: site.name, sectorIndex: ti, phase: "planning" });
+      const res = planSite(site, wc, baseCells, cfg);
+      res.vcells.forEach(vc => wc.push(vc));
+      lastResults.push({ site, ...res });
+      done += site.sectors.length;
       if (done % 3 === 0) await yield_();
     }
   }
 
-  onProgress && onProgress({ done: totalSectors, total: totalSectors, siteName: plannedSites.at(-1)?.name || "", sectorIndex: 0, phase: "done" });
-  return out;
+  let bestResults = lastResults;
+  let bestScore   = scorePass(lastResults);
+
+  // Passes 2..N: Jacobi — re-plan each unlocked site using all OTHER sites'
+  // assignments from the previous pass. Keep the best-scoring pass.
+  for (let pass = 2; pass <= maxPasses; pass++) {
+    const locked     = new Set(lastResults.filter(isLocked).map(r => r.site.name));
+    const prevVCells = Object.fromEntries(lastResults.map(r => [r.site.name, r.vcells]));
+
+    const nextResults = [];
+    let done = 0;
+    for (let si = 0; si < plannedSites.length; si++) {
+      const site = plannedSites[si];
+      if (locked.has(site.name)) {
+        nextResults.push(lastResults.find(r => r.site.name === site.name));
+        done += site.sectors.length;
+        continue;
+      }
+      onProgress && onProgress({ pass, totalPasses: maxPasses, done, total: totalSectors, siteName: site.name, locked: locked.size });
+      await yield_();
+      const wc = [...baseCells];
+      plannedSites.forEach(s => { if (s.name !== site.name) (prevVCells[s.name] || []).forEach(vc => wc.push(vc)); });
+      const res = planSite(site, wc, baseCells, cfg);
+      nextResults.push({ site, ...res });
+      done += site.sectors.length;
+    }
+    await yield_();
+
+    lastResults = nextResults;
+    const s = scorePass(nextResults);
+    if (isBetter(s, bestScore)) { bestScore = s; bestResults = nextResults; }
+  }
+
+  onProgress && onProgress({ pass: maxPasses, totalPasses: maxPasses, done: totalSectors, total: totalSectors, siteName: "", locked: 0 });
+  return bestResults.flatMap(r => r.rows);
 }
 
 /* =========================
@@ -802,11 +866,11 @@ function App(){
   const [nsData,setNsData]=useState(null);
   const [nsMap,setNsMap]=useState({});
 
-  const [cfg,setCfg]=useState({ minReuseKm:20, minRsiGap:20, pciMin:0, pciMax:503, rsiMin:0, rsiMax:837 });
+  const [cfg,setCfg]=useState({ minReuseKm:20, minRsiGap:20, pciMin:0, pciMax:503, rsiMin:0, rsiMax:837, maxPasses:3 });
   const [results,setResults]=useState(null);
 
   const [planning,setPlanning]=useState(false);
-  const [prog,setProg]=useState({ done:0, total:0, siteName:"", sectorIndex:0, phase:"" });
+  const [prog,setProg]=useState({ pass:1, totalPasses:1, done:0, total:0, siteName:"", locked:0 });
 
   const canContinue = gisData && sumData && nsData;
 
@@ -854,6 +918,7 @@ function App(){
     const minRsiGap  = Number(cfg.minRsiGap);
     const pciMin = Number(cfg.pciMin), pciMax = Number(cfg.pciMax);
     const rsiMin = Number(cfg.rsiMin), rsiMax = Number(cfg.rsiMax);
+    const maxPasses  = Math.max(1, Math.floor(Number(cfg.maxPasses) || 1));
     if (!isFinite(minReuseKm) || minReuseKm <= 0) { setErr("Minimum reuse distance must be positive."); return; }
     if (!isFinite(minRsiGap) || minRsiGap <= 0) { setErr("Minimum RSI gap must be positive."); return; }
     if (!isFinite(pciMin) || !isFinite(pciMax) || pciMin >= pciMax) { setErr("PCI min must be less than PCI max."); return; }
@@ -861,12 +926,12 @@ function App(){
 
     const totalSectors = plannedSites.reduce((s,p)=>s + (p.sectors?.length || 0), 0);
     setPlanning(true);
-    setProg({ done:0, total: totalSectors, siteName: plannedSites[0]?.name || "", sectorIndex:0, phase:"planning" });
+    setProg({ pass:1, totalPasses:maxPasses, done:0, total:totalSectors, siteName:plannedSites[0]?.name||"", locked:0 });
 
     try{
       const out = await planAllAsync(plannedSites, baseCells, {
-        minReuseKm, minRsiGap, pciMin, pciMax, rsiMin, rsiMax
-      }, (p) => setProg({ done:p.done, total:p.total, siteName:p.siteName||"", sectorIndex:p.sectorIndex||0, phase:p.phase||"" }));
+        minReuseKm, minRsiGap, pciMin, pciMax, rsiMin, rsiMax, maxPasses
+      }, (p) => setProg({ pass:p.pass||1, totalPasses:p.totalPasses||1, done:p.done||0, total:p.total||0, siteName:p.siteName||"", locked:p.locked||0 }));
       setResults(out);
       setStep(3);
     } finally {
@@ -977,25 +1042,35 @@ function App(){
             </div>
           </div>
 
+          <div style={{marginTop:14}}>
+            <div className="label">Planning passes (multi-pass refinement)</div>
+            <input className="mono" style={{maxWidth:100}} value={cfg.maxPasses} onChange={e => setCfg(c => ({...c, maxPasses: e.target.value}))} />
+            <div className="small" style={{marginTop:4}}>Pass 1 = sequential greedy. Passes 2+ re-plan each unlocked site using all other sites' previous-pass assignments. Improves dense clusters; isolated sites are locked and skipped automatically.</div>
+          </div>
+
           <div style={{display:"flex", gap:10, marginTop:14, alignItems:"center"}}>
             <button onClick={() => setStep(1)} disabled={planning}>← Back</button>
             <button className="primary" onClick={runPlan} disabled={planning}>
               {planning ? "Planning…" : "Plan →"}
             </button>
-            {planning && <span className="small mono" style={{marginLeft:6}}>{pct}% ({prog.done}/{prog.total})</span>}
+            {planning && <span className="small mono" style={{marginLeft:6}}>
+              {prog.totalPasses > 1 ? `Pass ${prog.pass}/${prog.totalPasses} · ` : ""}{pct}% ({prog.done}/{prog.total})
+            </span>}
           </div>
 
           {planning && (
             <div className="progressWrap">
               <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
                 <div className="small">
-                  Planning <b className="mono">{Math.min(prog.done + 1, prog.total)}</b> / <b className="mono">{prog.total}</b>
+                  {prog.totalPasses > 1 && <><b>Pass {prog.pass}/{prog.totalPasses}</b> · </>}
+                  Sector <b className="mono">{Math.min(prog.done + 1, prog.total)}</b> / <b className="mono">{prog.total}</b>
                   {prog.siteName ? <> · Site: <b>{prog.siteName}</b></> : null}
+                  {prog.pass > 1 && prog.locked > 0 ? <> · <b>{prog.locked}</b> locked</> : null}
                 </div>
                 <div className="small mono">{pct}%</div>
               </div>
               <div className="barOuter"><div className="barInner" style={{width: `${pct}%`}}></div></div>
-              <div className="small" style={{marginTop:8}}>Working… UI stays responsive (yield between sectors).</div>
+              <div className="small" style={{marginTop:8}}>Working… UI stays responsive (yield between sites).</div>
             </div>
           )}
         </div>
