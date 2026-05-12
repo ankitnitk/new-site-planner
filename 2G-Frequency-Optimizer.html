@@ -1240,36 +1240,6 @@ function App() {
             </div>
           </div>
 
-          {/* Audit table */}
-          <div className="card" style={{overflowX:"auto",padding:0,marginBottom:14}}>
-            <table>
-              <thead>
-                <tr>
-                  <th>BCF</th><th>Segment</th><th>Az</th><th>BCCH</th>
-                  <th>BCCH Mode</th><th>T1 Conflicting cells</th>
-                  <th>BSIC Sep (km)</th><th>BSIC Conflict</th><th>TCH Conflicts</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditResult.siteAudits.map(site=>
-                  site.sectorAudits.map((sec,si)=>(
-                    <tr key={`${site.siteName}-${si}`} style={sec.hasConflict?{background:"#FFF9C4"}:{}}>
-                      <td>{site.siteName}</td>
-                      <td className="mono">{sec.cellName||`S${si+1}`}</td>
-                      <td className="mono">{Math.round(sec.az)}</td>
-                      <td className="mono">{sec.bcch??'—'}</td>
-                      <td><ModeBadge mode={sec.bcchMode}/></td>
-                      <td className="small mono" style={{maxWidth:200,wordBreak:"break-all"}}>{[...sec.t1Conflicts,...sec.t2Conflicts].join(", ")||"—"}</td>
-                      <td className="mono">{sec.bsicRepeatDist!=null?Math.round(sec.bsicRepeatDist*10)/10:"∞"}</td>
-                      <td>{sec.bsicConflict?<span className="badge badge-t1">YES</span>:<span className="badge badge-clean">OK</span>}</td>
-                      <td className="mono">{sec.tchConflicts.length>0?sec.tchConflicts.join(", "):"—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
           {/* Iteration recommendation */}
           {iterRec&&(
             <div className="rec-box">
@@ -1326,6 +1296,36 @@ function App() {
                 <div className="barOuter"><div className="barInner" style={{width:`${pct}%`}}></div></div>
               </div>
             )}
+          </div>
+
+          {/* Audit table */}
+          <div className="card" style={{overflowX:"auto",padding:0,marginBottom:14}}>
+            <table>
+              <thead>
+                <tr>
+                  <th>BCF</th><th>Segment</th><th>Az</th><th>BCCH</th>
+                  <th>BCCH Mode</th><th>T1 Conflicting cells</th>
+                  <th>BSIC Sep (km)</th><th>BSIC Conflict</th><th>TCH Conflicts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditResult.siteAudits.map(site=>
+                  site.sectorAudits.map((sec,si)=>(
+                    <tr key={`${site.siteName}-${si}`} style={sec.hasConflict?{background:"#FFF9C4"}:{}}>
+                      <td>{site.siteName}</td>
+                      <td className="mono">{sec.cellName||`S${si+1}`}</td>
+                      <td className="mono">{Math.round(sec.az)}</td>
+                      <td className="mono">{sec.bcch??'—'}</td>
+                      <td><ModeBadge mode={sec.bcchMode}/></td>
+                      <td className="small mono" style={{maxWidth:200,wordBreak:"break-all"}}>{[...sec.t1Conflicts,...sec.t2Conflicts].join(", ")||"—"}</td>
+                      <td className="mono">{sec.bsicRepeatDist!=null?Math.round(sec.bsicRepeatDist*10)/10:"∞"}</td>
+                      <td>{sec.bsicConflict?<span className="badge badge-t1">YES</span>:<span className="badge badge-clean">OK</span>}</td>
+                      <td className="mono">{sec.tchConflicts.length>0?sec.tchConflicts.join(", "):"—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
