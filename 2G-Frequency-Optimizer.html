@@ -227,6 +227,9 @@ function parseTCHList(str) {
   if(!str||!String(str).trim()) return [];
   return String(str).trim().split(/[\s,;]+/).map(Number).filter(v=>!isNaN(v));
 }
+// Standard GSM ARFCN band classification (independent of configured pools)
+const isArfcn900  = n => (n >= 0   && n <= 124)  || (n >= 975 && n <= 1023);
+const isArfcn1800 = n =>  n >= 512 && n <= 885;
 function shuffle(arr) {
   const a=[...arr];
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
@@ -569,10 +572,6 @@ async function planAllSites(sites,baseCells,cfg,onProgress) {
 
 // ── Build opt sites from target list ─────────────────────────────────────────
 function buildOptSites(targetRows, targetCols, gisCells, paramMap, bands) {
-  const band900=bands[0], band1800=bands[1];
-  const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
-  const bandSet1800=new Set(band1800?[...getBcchPool(band1800),...getTchPool(band1800)]:[]);
-
   const up=s=>(s||"").trim().toUpperCase();
   const targetBcfs=new Set(), targetSegs=new Set();
   targetRows.forEach(r=>{
@@ -588,10 +587,10 @@ function buildOptSites(targetRows, targetCols, gisCells, paramMap, bands) {
     const tch=parseTCHList(p.tch||"");
     const bcch=(p.bcch!==undefined&&p.bcch!=="")?Number(p.bcch):null;
     const isNaNBcch=bcch===null||isNaN(bcch);
-    const bcchOn900=!isNaNBcch&&bandSet900.has(bcch);
-    const bcchOn1800=!isNaNBcch&&bandSet1800.has(bcch);
-    const tch900=tch.filter(t=>bandSet900.has(t));
-    const tch1800=tch.filter(t=>!bandSet900.has(t));
+    const bcchOn900=!isNaNBcch&&isArfcn900(bcch);
+    const bcchOn1800=!isNaNBcch&&isArfcn1800(bcch);
+    const tch900=tch.filter(t=>isArfcn900(t));
+    const tch1800=tch.filter(t=>isArfcn1800(t));
     let trx900,trx1800;
     if(bcchOn900){trx900=1+tch900.length;trx1800=tch1800.length;}
     else if(bcchOn1800){trx900=tch900.length;trx1800=1+tch1800.length;}
@@ -617,9 +616,7 @@ function buildOptSites(targetRows, targetCols, gisCells, paramMap, bands) {
 // Evaluates the CURRENT frequency plan — no assignment, read-only.
 function auditOneSite(site, allCells, cfg) {
   const {lat,lon,sectors}=site;
-  const {firstTierRadius,beamWidth,bsicRadius,searchRadius,bands}=cfg;
-  const band900=bands[0],band1800=bands[1];
-  const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+  const {firstTierRadius,beamWidth,bsicRadius,searchRadius}=cfg;
 
   const sectorAudits=sectors.map((sec,idx)=>{
     const az=parseFloat(sec.azimuth)||0;
@@ -637,8 +634,11 @@ function auditOneSite(site, allCells, cfg) {
 
     const {effectiveTier1,effectiveTier2}=classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth);
 
-    const tier1BCCHs=new Set(effectiveTier1.filter(c=>!isNaN(Number(c.bcch))&&bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
-    const tier2BCCHs=new Set(effectiveTier2.filter(c=>!isNaN(Number(c.bcch))&&bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
+    // Classify by same band as the current sector's BCCH — use standard ARFCN ranges
+    const curBand900=curBcch!==null&&isArfcn900(curBcch);
+    const sameband=n=>curBand900?isArfcn900(n):isArfcn1800(n);
+    const tier1BCCHs=new Set(effectiveTier1.filter(c=>!isNaN(Number(c.bcch))&&sameband(Number(c.bcch))).map(c=>Number(c.bcch)));
+    const tier2BCCHs=new Set(effectiveTier2.filter(c=>!isNaN(Number(c.bcch))&&sameband(Number(c.bcch))).map(c=>Number(c.bcch)));
 
     let bcchMode='clean';
     const t1Conflicts=[],t2Conflicts=[];
