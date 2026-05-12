@@ -532,7 +532,8 @@ const yield_ = () => new Promise(r => setTimeout(r, 0));
 async function planAllSites(sites,baseCells,cfg,onProgress,warmVCells) {
   const maxPasses=Math.max(1,cfg.maxPasses??3);
   const toVCell=(site,r)=>({cellName:`${site.name}_S${r.idx+1}`,siteName:site.name,lat:parseFloat(site.lat),lon:parseFloat(site.lon),azimuth:r.az,bcch:r.bcch,tchList:[...r.tch900List,...r.tch1800List],ncc:r.ncc,bcc:r.bcc,lac:r.lac,rac:r.rac,bsc:r.bsc,isPlanned:true});
-  const scorePass=results=>{let deg=0;results.forEach(({sectorResults})=>{sectorResults.forEach(r=>{if(r.bcchMode!=='clean')deg++;});});return deg;};
+  // T1/forced/impossible count 10×, T2 counts 1× — never sacrifice T1 to fix T2
+  const scorePass=results=>{let s=0;results.forEach(({sectorResults})=>{sectorResults.forEach(r=>{if(r.bcchMode==='t1_reuse'||r.bcchMode==='forced'||r.bcchMode==='impossible')s+=10;else if(r.bcchMode==='t2_reuse')s+=1;});});return s;};
   let lastResults=[];
   if(warmVCells){
     // Optimizer pass 1: Jacobi seeded with original assignments
@@ -1180,8 +1181,9 @@ function App() {
       });
       const candidateNetwork=buildNetwork(optOutput);
       const candidateAudit=auditAllSites(optSites,[...baseCells,...candidateNetwork],cfg);
-      const origScore=auditResult.summary.t1+auditResult.summary.cosite+auditResult.summary.t2;
-      const newScore=candidateAudit.summary.t1+candidateAudit.summary.cosite+candidateAudit.summary.t2;
+      const auditScore=s=>(s.t1+s.cosite)*10+s.t2;
+      const origScore=auditScore(auditResult.summary);
+      const newScore=auditScore(candidateAudit.summary);
       if(newScore>origScore){
         // Optimizer degraded the plan — revert to original assignments
         const origOut=optSites.map(site=>({
