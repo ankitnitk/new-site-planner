@@ -664,11 +664,19 @@ function auditOneSite(site, allCells, cfg) {
     const nbTCHSet=new Set(scored.flatMap(c=>(c.tchList||[]).map(Number).filter(v=>!isNaN(v))));
     const tchConflicts=curTch.filter(t=>nbTCHSet.has(Number(t)));
 
-    const hasConflict=bcchMode!=='clean'||bsicConflict||tchConflicts.length>0;
+    // Co-site checks (sibling sectors at the same site)
+    const siblingBCCHs=sectors.filter((_,i)=>i!==idx).map(s=>s.bcch).filter(b=>b!==null&&!isNaN(Number(b))).map(Number);
+    const cositeExact=curBcch!==null&&!isNaN(curBcch)&&siblingBCCHs.includes(curBcch);
+    const cositeAdj=!cositeExact&&curBcch!==null&&!isNaN(curBcch)&&siblingBCCHs.some(b=>Math.abs(b-curBcch)===1);
+    const siblingTCHs=new Set(sectors.filter((_,i)=>i!==idx).flatMap(s=>(s.tchList||[]).map(Number).filter(v=>!isNaN(v))));
+    const cositeTchConflicts=curTch.map(Number).filter(t=>!isNaN(t)&&siblingTCHs.has(t));
+
+    const hasConflict=bcchMode!=='clean'||bsicConflict||tchConflicts.length>0||cositeExact||cositeAdj||cositeTchConflicts.length>0;
     return {idx, cellName:sec.cellName, az,
       bcch:curBcch, ncc:curNcc, bcc:curBcc,
       tchList:curTch, bcchMode, t1Conflicts, t2Conflicts,
-      bsicRepeatDist, bsicConflict, tchConflicts, hasConflict};
+      bsicRepeatDist, bsicConflict, tchConflicts,
+      cositeExact, cositeAdj, cositeTchConflicts, hasConflict};
   });
 
   return {siteName:site.name, sectorAudits, hasConflict:sectorAudits.some(s=>s.hasConflict)};
@@ -677,15 +685,16 @@ function auditOneSite(site, allCells, cfg) {
 // ── Audit all sites + summarise ───────────────────────────────────────────────
 function auditAllSites(optSites, allCells, cfg) {
   const results=optSites.map(s=>auditOneSite(s,allCells,cfg));
-  let t1=0,t2=0,bsic=0,tch=0;
+  let t1=0,t2=0,bsic=0,tch=0,cosite=0;
   results.forEach(r=>r.sectorAudits.forEach(s=>{
     if(s.bcchMode==='t1_reuse') t1++;
     else if(s.bcchMode==='t2_reuse') t2++;
     if(s.bsicConflict) bsic++;
     if(s.tchConflicts.length>0) tch++;
+    if(s.cositeExact||s.cositeAdj) cosite++;
   }));
-  const total=t1+t2+bsic+tch>0?results.reduce((n,r)=>n+r.sectorAudits.filter(s=>s.hasConflict).length,0):0;
-  return {siteAudits:results, summary:{t1,t2,bsic,tch,total}};
+  const total=results.reduce((n,r)=>n+r.sectorAudits.filter(s=>s.hasConflict).length,0);
+  return {siteAudits:results, summary:{t1,t2,bsic,tch,cosite,total}};
 }
 
 // ── Iteration recommendation ──────────────────────────────────────────────────
@@ -1232,6 +1241,7 @@ function App() {
           <div className="summary-box">
             <div style={{fontWeight:800,fontSize:15,marginBottom:8}}>Current plan quality</div>
             <div className="stat-grid">
+              <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.cosite>0?"#9B2020":"var(--nokia-dark-blue)"}}>{auditResult.summary.cosite}</div><div className="stat-label">Co-site BCCH conflicts</div></div>
               <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.t1>0?"#9B2020":"var(--nokia-dark-blue)"}}>{auditResult.summary.t1}</div><div className="stat-label">T1 BCCH conflicts</div></div>
               <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.t2>0?"#7A4F00":"var(--nokia-dark-blue)"}}>{auditResult.summary.t2}</div><div className="stat-label">T2 BCCH conflicts</div></div>
               <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.bsic>0?"#9B2020":"var(--nokia-dark-blue)"}}>{auditResult.summary.bsic}</div><div className="stat-label">BSIC conflicts</div></div>
@@ -1304,7 +1314,7 @@ function App() {
               <thead>
                 <tr>
                   <th>BCF</th><th>Segment</th><th>Az</th><th>BCCH</th>
-                  <th>BCCH Mode</th><th>T1 Conflicting cells</th>
+                  <th>BCCH Mode</th><th>Co-site BCCH</th><th>T1 Conflicting cells</th>
                   <th>BSIC Sep (km)</th><th>BSIC Conflict</th><th>TCH Conflicts</th>
                 </tr>
               </thead>
@@ -1317,6 +1327,7 @@ function App() {
                       <td className="mono">{Math.round(sec.az)}</td>
                       <td className="mono">{sec.bcch??'—'}</td>
                       <td><ModeBadge mode={sec.bcchMode}/></td>
+                      <td>{sec.cositeExact?<span className="badge badge-t1">EXACT</span>:sec.cositeAdj?<span className="badge badge-t2">ADJ ±1</span>:'—'}</td>
                       <td className="small mono" style={{maxWidth:200,wordBreak:"break-all"}}>{[...sec.t1Conflicts,...sec.t2Conflicts].join(", ")||"—"}</td>
                       <td className="mono">{sec.bsicRepeatDist!=null?Math.round(sec.bsicRepeatDist*10)/10:"∞"}</td>
                       <td>{sec.bsicConflict?<span className="badge badge-t1">YES</span>:<span className="badge badge-clean">OK</span>}</td>
@@ -1339,6 +1350,7 @@ function App() {
               <div style={{fontWeight:800,fontSize:15,marginBottom:10}}>Before → After</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
                 {[
+                  {label:"Co-site BCCH conflicts",before:auditResult.summary.cosite,after:afterSummary.cosite},
                   {label:"T1 BCCH conflicts",before:auditResult.summary.t1,after:afterSummary.t1},
                   {label:"T2 BCCH conflicts",before:auditResult.summary.t2,after:afterSummary.t2},
                   {label:"BSIC conflicts",before:auditResult.summary.bsic,after:afterSummary.bsic},
