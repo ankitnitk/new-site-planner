@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2G Frequency Optimizer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    :root {
+      --nokia-blue:#005AFF; --nokia-dark-blue:#001E82; --nokia-cyan:#00B8F1;
+      --nokia-navy:#00137F; --nokia-light:#E8F0FE;
+      --color-background-primary:#ffffff; --color-background-secondary:#F2F4F8;
+      --color-background-tertiary:#F8F9FC; --color-background-info:#E8F0FE;
+      --color-background-success:#E6F4EA; --color-background-warning:#FEF7E0;
+      --color-background-danger:#FCE8E8;
+      --color-text-primary:#0D1B2A; --color-text-secondary:#4A5568;
+      --color-text-tertiary:#8A96A8; --color-text-info:#001E82;
+      --color-text-success:#1E6E34; --color-text-warning:#7A4F00;
+      --color-text-danger:#9B2020;
+      --color-border-tertiary:#E2E8F0; --color-border-secondary:#C8D0DC;
+      --color-border-primary:#A0AABC; --color-border-info:#7BA7F5;
+      --color-border-success:#6AC47A; --color-border-warning:#F0B429;
+      --color-border-danger:#F08080;
+      --border-radius-md:6px; --border-radius-lg:10px; --border-radius-xl:14px;
+      --shadow-sm:0 1px 3px rgba(0,30,130,0.08),0 1px 2px rgba(0,30,130,0.04);
+      --shadow-md:0 4px 12px rgba(0,30,130,0.10),0 2px 4px rgba(0,30,130,0.06);
+      --font-mono:'Courier New','Lucida Console',monospace;
+      --font-sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;}
+    body{font-family:var(--font-sans);font-size:14px;color:var(--color-text-primary);
+      background:var(--color-background-secondary);margin:0;-webkit-font-smoothing:antialiased;}
+    #cdn-err{display:none;position:fixed;top:0;left:0;right:0;z-index:9999;
+      background:#9B2020;color:white;text-align:center;padding:14px 20px;
+      font-family:sans-serif;font-size:14px;line-height:1.5;}
+    #nokia-header{background:linear-gradient(135deg,var(--nokia-dark-blue) 0%,var(--nokia-navy) 60%,#001560 100%);
+      color:white;padding:0 32px;display:flex;align-items:center;
+      justify-content:space-between;height:56px;box-shadow:0 2px 8px rgba(0,20,100,0.35);}
+    #nokia-header .brand{display:flex;align-items:center;gap:16px;}
+    #nokia-header .tool-name{font-size:13px;font-weight:500;color:rgba(255,255,255,0.85);letter-spacing:0.3px;}
+    #nokia-header .author-tag{font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:0.2px;}
+    #root{max-width:1350px;margin:0 auto;padding:28px 28px 64px;min-height:calc(100vh - 56px);}
+    input,select{font-family:var(--font-sans);font-size:13px;color:var(--color-text-primary);
+      background:white;border:1px solid var(--color-border-secondary);
+      border-radius:var(--border-radius-md);padding:7px 11px;outline:none;width:100%;
+      transition:border-color 0.15s,box-shadow 0.15s;}
+    input:focus,select:focus{border-color:var(--nokia-blue);box-shadow:0 0 0 3px rgba(0,90,255,0.12);}
+    button{font-family:var(--font-sans);font-size:13px;font-weight:500;color:var(--color-text-secondary);
+      background:white;border:1px solid var(--color-border-secondary);
+      border-radius:var(--border-radius-md);padding:8px 18px;cursor:pointer;
+      transition:all 0.15s;box-shadow:var(--shadow-sm);}
+    button:hover{background:var(--color-background-secondary);border-color:var(--color-border-primary);box-shadow:var(--shadow-md);}
+    button:active{transform:scale(0.98);}
+    button:disabled{opacity:0.45;cursor:not-allowed;box-shadow:none;}
+    button.primary{background:var(--nokia-blue);color:white;border-color:var(--nokia-blue);box-shadow:0 2px 8px rgba(0,90,255,0.30);}
+    button.primary:hover{background:#0048CC;border-color:#0048CC;box-shadow:0 4px 14px rgba(0,90,255,0.40);}
+    button.secondary{background:white;color:var(--nokia-dark-blue);border-color:var(--nokia-blue);}
+    strong{font-weight:600;} h2{color:var(--color-text-primary);line-height:1.4;font-weight:600;} p{line-height:1.6;}
+    th{white-space:nowrap;}
+    #page-footer{text-align:center;padding:20px;margin-top:48px;font-size:11px;color:var(--color-text-tertiary);
+      border-top:1px solid var(--color-border-tertiary);}
+    .card{background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);
+      border-radius:var(--border-radius-xl);box-shadow:var(--shadow-sm);padding:16px;margin-bottom:12px;}
+    .row{display:flex;gap:14px;flex-wrap:wrap;}
+    .col{flex:1;min-width:280px;}
+    .label{font-size:12px;color:var(--color-text-secondary);margin:0 0 5px;}
+    .mono{font-family:var(--font-mono);}
+    .small{font-size:12px;color:var(--color-text-secondary);line-height:1.55;}
+    .err{background:var(--color-background-danger);border:1px solid var(--color-border-danger);
+      color:var(--color-text-danger);padding:10px 12px;border-radius:var(--border-radius-lg);
+      margin-bottom:12px;font-size:13px;font-weight:600;}
+    .ok{background:var(--color-background-success);border:1px solid var(--color-border-success);
+      color:var(--color-text-success);padding:8px 10px;border-radius:var(--border-radius-lg);
+      margin-top:10px;font-size:12px;font-weight:600;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    thead th{text-align:left;font-size:11px;color:var(--color-text-secondary);
+      border-bottom:1px solid var(--color-border-tertiary);padding:9px 10px;
+      position:sticky;top:0;background:white;white-space:nowrap;}
+    tbody td{padding:8px 10px;border-bottom:1px solid var(--color-border-tertiary);vertical-align:top;}
+    tbody tr:nth-child(2n){background:var(--color-background-tertiary);}
+    .steps{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+    .step{display:flex;align-items:center;gap:8px;padding:6px 10px;
+      border-radius:999px;border:1px solid var(--color-border-tertiary);
+      background:white;font-size:12px;color:var(--color-text-secondary);}
+    .step .dot{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:800;background:var(--nokia-light);color:var(--nokia-dark-blue);}
+    .step.active{border-color:rgba(0,90,255,.35);color:var(--color-text-primary);}
+    .step.active .dot{background:rgba(0,90,255,.15);color:var(--nokia-blue);}
+    .step.done{background:var(--color-background-success);border-color:var(--color-border-success);}
+    .step.done .dot{background:rgba(30,110,52,.15);color:var(--color-text-success);}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    @media(max-width:860px){.grid2{grid-template-columns:1fr;}.col{min-width:100%;}}
+    .progressWrap{margin-top:12px;padding:12px 14px;border-radius:var(--border-radius-lg);
+      border:1px solid var(--color-border-tertiary);background:var(--color-background-tertiary);}
+    .barOuter{height:8px;background:var(--color-background-secondary);border-radius:999px;
+      overflow:hidden;border:1px solid var(--color-border-tertiary);}
+    .barInner{height:100%;background:var(--nokia-blue);width:0%;transition:width .12s ease;}
+    /* Badges */
+    .badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;}
+    .badge-clean{background:var(--color-background-success);color:var(--color-text-success);border:1px solid var(--color-border-success);}
+    .badge-t2{background:var(--color-background-warning);color:var(--color-text-warning);border:1px solid var(--color-border-warning);}
+    .badge-t1{background:var(--color-background-danger);color:var(--color-text-danger);border:1px solid var(--color-border-danger);}
+    .badge-info{background:var(--color-background-info);color:var(--color-text-info);border:1px solid var(--color-border-info);}
+    /* Summary / result boxes */
+    .summary-box{background:var(--color-background-info);border:1px solid var(--color-border-info);
+      border-radius:var(--border-radius-lg);padding:14px 18px;margin-bottom:14px;}
+    .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:10px;}
+    .stat-cell{background:white;border:1px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);
+      padding:10px 14px;text-align:center;}
+    .stat-val{font-size:22px;font-weight:800;color:var(--nokia-dark-blue);}
+    .stat-label{font-size:11px;color:var(--color-text-secondary);margin-top:2px;}
+    .changed-cell{background:#FFF9C4 !important;}
+    .rec-box{background:var(--color-background-warning);border:1px solid var(--color-border-warning);
+      border-radius:var(--border-radius-lg);padding:12px 16px;margin-bottom:14px;}
+    /* Radio group */
+    .radio-group{display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;}
+    .radio-opt{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;}
+    .radio-opt input[type=radio]{width:auto;cursor:pointer;}
+  </style>
+</head>
+<body>
+<div id="cdn-err">⚠ One or more required libraries failed to load from CDN. Check your internet connection.</div>
+<div id="nokia-header">
+  <div class="brand"><span class="tool-name">2G Frequency Optimizer</span></div>
+  <span class="author-tag">by Ankit Jain</span>
+</div>
+<div id="root"></div>
+<div id="page-footer">
+  2G Frequency Optimizer &nbsp;·&nbsp; Author: <strong>Ankit Jain</strong>
+  &nbsp;·&nbsp; Independent personal project — not affiliated with or endorsed by any company.
+</div>
+
+<script type="text/babel">
+const { useState, useRef } = React;
+
+// ── Geo ───────────────────────────────────────────────────────────────────────
+const toRad = d => d * Math.PI / 180;
+const toDeg = r => r * 180 / Math.PI;
+const haversineKm = (a,b,c,d) => {
+  const R=6371,dLat=toRad(c-a),dLon=toRad(d-b);
+  const x=Math.sin(dLat/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+};
+const compassBearing = (la1,lo1,la2,lo2) => {
+  const dL=toRad(lo2-lo1),y=Math.sin(dL)*Math.cos(toRad(la2));
+  const x=Math.cos(toRad(la1))*Math.sin(toRad(la2))-Math.sin(toRad(la1))*Math.cos(toRad(la2))*Math.cos(dL);
+  return (toDeg(Math.atan2(y,x))+360)%360;
+};
+const angleDiff = (a,b) => Math.min(Math.abs(((a-b+180+360)%360)-180),180);
+
+// ── File reading ──────────────────────────────────────────────────────────────
+const readBuf = file => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsArrayBuffer(file); });
+
+function pickSheet(names,preferred) {
+  if (preferred) { const c=names.find(n=>n.toLowerCase()===preferred.toLowerCase()); if(c) return c; const p=names.find(n=>n.toLowerCase().includes(preferred.toLowerCase())); if(p) return p; }
+  const norm=s=>s.toLowerCase().replace(/\s/g,"");
+  return names.find(n=>norm(n)==="celldetails")||names.find(n=>norm(n).includes("cell")&&norm(n).includes("detail"))||names.find(n=>norm(n).includes("cell"))||names[0];
+}
+function parseCSVText(text) {
+  const clean=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").trim();
+  const first=clean.split("\n")[0];
+  const sep=first.split(";").length>first.split(",").length?";":",";
+  const split=line=>{ if(sep===";") return line.split(";").map(v=>v.trim().replace(/^"|"$/g,""));
+    const v=[]; let q=false,c=""; for(const ch of line){if(ch==='"'){q=!q;continue;}if(ch===","&&!q){v.push(c.trim());c="";continue;}c+=ch;} v.push(c.trim()); return v; };
+  const lines=clean.split("\n"); const headers=split(lines[0]);
+  const rows=lines.slice(1).filter(l=>l.trim()).map(l=>{const v=split(l);const o={};headers.forEach((h,i)=>{o[h]=(v[i]||"").trim();});return o;});
+  return {headers,rows,sheetName:null,allSheets:[]};
+}
+async function parseFile(file,preferredSheet) {
+  const buf=await readBuf(file); const ext=file.name.split(".").pop().toLowerCase();
+  if(ext==="csv"||ext==="txt") return parseCSVText(new TextDecoder().decode(buf));
+  const wb=XLSX.read(buf,{type:"array",cellDates:true});
+  const sn=pickSheet(wb.SheetNames,preferredSheet);
+  const json=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:"",raw:false});
+  const headers=json.length?Object.keys(json[0]):[];
+  const rows=json.map(row=>{const o={};Object.entries(row).forEach(([k,v])=>{o[k]=String(v).trim();});return o;});
+  return {headers,rows,sheetName:sn,allSheets:wb.SheetNames};
+}
+
+// ── Column detection ──────────────────────────────────────────────────────────
+const normC = s => s.toLowerCase().replace(/[\s_\-\.]/g,"");
+const findCol = (headers,pats) => { const h=headers.map(normC); for(const p of pats){const i=h.findIndex(x=>x.includes(normC(p)));if(i>=0)return headers[i];} return ""; };
+
+const detectGISCols = h => ({
+  siteName: findCol(h,["bcf","sitename","siteid","site_name","site","btsname"]),
+  cellName: findCol(h,["segment","seg","cellname","cellid","cell_name","cell","bscell","bts"]),
+  lat:      findCol(h,["lat","latitude","y_coord","ylat"]),
+  lon:      findCol(h,["lon","lng","longitude","x_coord","xlon"]),
+  azimuth:  findCol(h,["azimuth","bearing","direction","az","dir"]),
+});
+const detectParamCols = h => ({
+  cellName: findCol(h,["segment","seg","cellname","bscell","cell_name","cellid","cell","bts"]),
+  bcch:     findCol(h,["bcch","bccharfcn","bcch_arfcn","bcchan","arfcn"]),
+  tch:      findCol(h,["malist","ma_list","tchlist","frequencyhoppingarfcns","hopfreq","tchfreq","tch","freqlist"]),
+  ncc:      findCol(h,["ncc","networkcolour","networkcolor"]),
+  bcc:      findCol(h,["bcc","basecolour","basecolor"]),
+  bsic:     findCol(h,["bsic","basestationidentity"]),
+  lac:      findCol(h,["lac","locationareacode"]),
+  rac:      findCol(h,["rac","routingareacode"]),
+  bsc:      findCol(h,["bsc","bscname","bsc_name","bscid"]),
+});
+const detectTargetCols = h => ({
+  bcf:     findCol(h,["bcf","sitename","site_name","site","btsname","bts"]),
+  segment: findCol(h,["segment","seg","cellname","cell_name","cell","bscell"]),
+});
+
+// ── ARFCN helpers ─────────────────────────────────────────────────────────────
+function parseARFCNList(str) {
+  if(!str||!str.trim()) return [];
+  const result=new Set();
+  for(const tok of String(str).trim().split(/[\s,;]+/)){
+    const rng=tok.match(/^(\d+)\s*(?:-|\.\.)\s*(\d+)$/);
+    if(rng){const lo=Math.min(+rng[1],+rng[2]),hi=Math.max(+rng[1],+rng[2]);for(let a=lo;a<=hi;a++)result.add(a);}
+    else{const n=parseInt(tok,10);if(!isNaN(n))result.add(n);}
+  }
+  return [...result].sort((a,b)=>a-b);
+}
+function parseTCHList(str) {
+  if(!str||!String(str).trim()) return [];
+  return String(str).trim().split(/[\s,;]+/).map(Number).filter(v=>!isNaN(v));
+}
+function shuffle(arr) {
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+const getBcchPool = bd => parseARFCNList(bd?.bcchStr||"");
+const getTchPool  = bd => parseARFCNList(bd?.tchStr||"");
+
+// ── Optimal TCH selection (reservoir sampling) ────────────────────────────────
+function optimalTCHSelect(pool, count, minSep) {
+  const sorted=[...new Set(pool)].sort((a,b)=>a-b);
+  if(!sorted.length||!count) return [];
+  let cn=1; for(let i=0;i<count;i++) cn=cn*(sorted.length-i)/(i+1);
+  if(cn>60000) return spreadSelect(pool,count,minSep);
+  let chosen=null,seen=0;
+  function search(start,sel){
+    if(sel.length===count){seen++;if(Math.random()<1/seen)chosen=[...sel];return;}
+    if(sorted.length-start<count-sel.length) return;
+    for(let i=start;i<sorted.length;i++){
+      if(sel.length>0&&sorted[i]-sel[sel.length-1]<minSep) continue;
+      search(i+1,[...sel,sorted[i]]);
+    }
+  }
+  search(0,[]);
+  return chosen??[];
+}
+function spreadSelect(pool,count,minSep=1) {
+  if(!pool.length) return [];
+  const eligible=(a,sel)=>!sel.includes(a)&&sel.every(s=>Math.abs(a-s)>=minSep);
+  const randomStart=Math.floor(Math.random()*pool.length);
+  const rotated=[...pool.slice(randomStart),...pool.slice(0,randomStart)];
+  const firstEligible=rotated.find(a=>eligible(a,[]))??pool[0];
+  const sel=[firstEligible];
+  while(sel.length<count){
+    let best=null,bd=-1;
+    for(const a of pool){if(!eligible(a,sel))continue;const d=Math.min(...sel.map(s=>Math.abs(a-s)));if(d>bd){bd=d;best=a;}}
+    if(best!==null)sel.push(best);else break;
+  }
+  return sel.sort((a,b)=>a-b);
+}
+
+// ── TCH planner ───────────────────────────────────────────────────────────────
+function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTCH) {
+  sameSectorTCH=sameSectorTCH||[];
+  if(!count||!tchPool.length) return {list:[],mode:"n/a"};
+  if(sameSectorTCH.length){
+    const ex=new Set(); sameSectorTCH.forEach(t=>{ex.add(t-1);ex.add(t);ex.add(t+1);});
+    tchPool=tchPool.filter(a=>!ex.has(a));
+    if(!tchPool.length) return {list:[],mode:"impossible"};
+  }
+  tchPool=shuffle(tchPool); const tchPoolSet=new Set(tchPool);
+  const inSiteBCCHAdj=new Set(inSiteBCCHSet); inSiteBCCHSet.forEach(b=>{inSiteBCCHAdj.add(b-1);inSiteBCCHAdj.add(b+1);});
+  const nbTCH=new Set(); scored.forEach(c=>(c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n))nbTCH.add(n);}));
+  const otherSectorTCH=new Set(siteRegTCH);
+  const hardForbid=new Set([...nbTCH,...inSiteBCCHAdj,...otherSectorTCH]);
+  const otherSectorAdj=new Set(); siteRegTCH.forEach(t=>{otherSectorAdj.add(t-1);otherSectorAdj.add(t+1);});
+  const poolA=[],poolB=[];
+  for(const a of tchPool){if(hardForbid.has(a))continue;if(!otherSectorAdj.has(a))poolA.push(a);poolB.push(a);}
+  const poolC=tchPool.filter(a=>!inSiteBCCHAdj.has(a)&&!otherSectorTCH.has(a)&&!otherSectorAdj.has(a));
+  const poolD=tchPool.filter(a=>!inSiteBCCHAdj.has(a)&&!otherSectorTCH.has(a));
+  const poolE=tchPool.filter(a=>!inSiteBCCHAdj.has(a)&&!otherSectorAdj.has(a));
+  const poolF=tchPool.filter(a=>!inSiteBCCHAdj.has(a));
+  let list=[],mode="clean";
+  list=optimalTCHSelect(poolA,count,2);
+  if(list.length>=count){mode="clean";}
+  else{
+    const lB=optimalTCHSelect(poolB,count,2);if(lB.length>=list.length){list=lB;mode=lB.length>=count?"site_adj":"partial";}
+    if(list.length<count){const lC=optimalTCHSelect(poolC,count,2);if(lC.length>list.length){list=lC;mode=lC.length>=count?"nb_reuse":"partial";}}
+    if(list.length<count){const lD=optimalTCHSelect(poolD,count,2);if(lD.length>list.length){list=lD;mode=lD.length>=count?"nb_reuse_adj":"partial";}}
+    if(list.length<count){const lE=optimalTCHSelect(poolE,count,2);if(lE.length>list.length){list=lE;mode=lE.length>=count?"site_reuse":"partial";}}
+    if(list.length<count){const lF=spreadSelect(poolF,count,2);if(lF.length>list.length){list=lF;mode="reuse";}}
+  }
+  list.forEach(t=>siteRegTCH.push(t));
+  return {list,mode};
+}
+
+// ── Cell overlap ──────────────────────────────────────────────────────────────
+function cellOverlap(la1,lo1,az1,la2,lo2,az2,bw) {
+  const dist=haversineKm(la1,lo1,la2,lo2);
+  if(dist<0.05) return {fwdS:0,revS:0};
+  const bear=compassBearing(la1,lo1,la2,lo2);
+  return {fwdS:Math.max(0,1-angleDiff(bear,az1)/bw),revS:Math.max(0,1-angleDiff((bear+180)%360,az2)/bw)};
+}
+
+// ── Tier classification helper (shared by planOneSite and auditOneSite) ───────
+function classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth) {
+  const OVL=0.05,BRIDGE_REV=0.40;
+  const hasDirectOverlap=c=>{
+    if(c.revS<=OVL) return false;
+    if(c.fwdS>OVL) return true;
+    if(c.revS<BRIDGE_REV) return false;
+    return sectors.some((sec2,i2)=>{
+      if(i2===idx) return false;
+      const az2=parseFloat(sec2.azimuth)||0;
+      return Math.max(0,1-angleDiff(c.bear,az2)/beamWidth)>OVL;
+    });
+  };
+  const tier1=scored.filter(c=>c.dist<=firstTierRadius&&hasDirectOverlap(c));
+  const tier1Names=new Set(tier1.map(c=>c.cellName));
+  const tier1SiteNames=new Set(tier1.map(c=>c.siteName).filter(Boolean));
+  const tier2=scored.filter(c=>{
+    if(tier1Names.has(c.cellName)) return false;
+    if(c.dist>firstTierRadius&&hasDirectOverlap(c)) return true;
+    if(c.siteName&&tier1SiteNames.has(c.siteName)) return true;
+    return false;
+  });
+  const DEMOTE_MAX=0.45,UPGRADE_MIN=0.60,SHADOW_OVL=0.40;
+  const demotedNames=new Set(),upgradedNames=new Set(),shadowedNames=new Set();
+  tier1.forEach(c=>{if((c.fwdS<=OVL||c.revS<=OVL)&&Math.max(c.fwdS,c.revS)<DEMOTE_MAX)demotedNames.add(c.cellName);});
+  tier2.forEach(c=>{if(c.fwdS>UPGRADE_MIN&&c.revS>UPGRADE_MIN)upgradedNames.add(c.cellName);});
+  const candidateT1=[...tier1.filter(c=>!demotedNames.has(c.cellName)),...tier2.filter(c=>upgradedNames.has(c.cellName))].sort((a,b)=>a.dist-b.dist);
+  const confirmedT1=[];
+  candidateT1.forEach(C=>{
+    const blocked=confirmedT1.some(B=>{
+      if(B.siteName&&C.siteName&&B.siteName===C.siteName) return false;
+      if(angleDiff(B.bear,C.bear)>beamWidth) return false;
+      const {fwdS:fBC}=cellOverlap(B.lat,B.lon,B.azimuth||0,C.lat,C.lon,C.azimuth||0,beamWidth);
+      if(fBC>SHADOW_OVL) return true;
+      if(B.fwdS<=OVL&&C.fwdS<=OVL&&angleDiff(B.bear,C.bear)<=beamWidth/3) return true;
+      if(B.fwdS>OVL&&C.fwdS>OVL&&angleDiff(B.bear,C.bear)<=beamWidth/3) return true;
+      return false;
+    });
+    if(blocked)shadowedNames.add(C.cellName); else confirmedT1.push(C);
+  });
+  const effectiveTier1=confirmedT1;
+  const effectiveTier2=[
+    ...tier2.filter(c=>!upgradedNames.has(c.cellName)),
+    ...tier1.filter(c=>demotedNames.has(c.cellName)||shadowedNames.has(c.cellName)),
+    ...tier2.filter(c=>upgradedNames.has(c.cellName)&&shadowedNames.has(c.cellName)),
+  ];
+  const eff1Names=new Set(effectiveTier1.map(c=>c.cellName));
+  const eff2Names=new Set(effectiveTier2.map(c=>c.cellName));
+  const eff12SiteNames=new Set([...effectiveTier1,...effectiveTier2].map(c=>c.siteName).filter(Boolean));
+  const effectiveTier3=scored.filter(c=>{
+    if(eff1Names.has(c.cellName)||eff2Names.has(c.cellName)) return false;
+    if(c.siteName&&eff12SiteNames.has(c.siteName)) return true;
+    return [...effectiveTier1,...effectiveTier2].some(t=>{
+      if(isNaN(t.lat)||isNaN(t.lon)) return false;
+      const {fwdS:f,revS:r}=cellOverlap(t.lat,t.lon,t.azimuth||0,c.lat,c.lon,c.azimuth||0,beamWidth);
+      return Math.max(f,r)>OVL;
+    });
+  });
+  return {effectiveTier1,effectiveTier2,effectiveTier3,demotedNames,upgradedNames,shadowedNames};
+}
+
+// ── planOneSite (verbatim from 2G planner) ────────────────────────────────────
+function planOneSite(site,workingCells,cfg) {
+  const {lat,lon,sectors}=site;
+  const {firstTierRadius,nccStr,bands,beamWidth}=cfg;
+  const nccPool=parseARFCNList(nccStr||"0-7").filter(n=>n>=0&&n<=7);
+  const band900=bands[0],band1800=bands[1];
+  const allBand900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+  const allBand1800=new Set(band1800?[...getBcchPool(band1800),...getTchPool(band1800)]:[]);
+  const siteReg={bcch:[],tch900:[],tch1800:[]};
+  workingCells.forEach(c=>{
+    if(isNaN(c.lat)||isNaN(c.lon)) return;
+    if(haversineKm(lat,lon,c.lat,c.lon)>=0.05) return;
+    const b=Number(c.bcch);if(!isNaN(b))siteReg.bcch.push(b);
+    (c.tchList||[]).forEach(t=>{const n=Number(t);if(isNaN(n))return;if(allBand1800.has(n))siteReg.tch1800.push(n);else siteReg.tch900.push(n);});
+  });
+  const lrbKey=c=>`${c.lac}|${c.rac}|${c.bsc}`;
+  const majorityVote=cands=>{
+    if(!cands.length) return {lac:null,rac:null,bsc:null};
+    const tally=new Map();
+    cands.forEach(c=>{const k=lrbKey(c);if(!tally.has(k))tally.set(k,{count:0,dist:c.dist||0,c});const v=tally.get(k);v.count++;if((c.dist||0)<v.dist){v.dist=c.dist||0;v.c=c;}});
+    const best=[...tally.values()].sort((a,b)=>b.count-a.count||a.dist-b.dist)[0];
+    return {lac:best.c.lac,rac:best.c.rac,bsc:best.c.bsc};
+  };
+  const siteLacRacBsc=(()=>{
+    const coSite=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&haversineKm(lat,lon,c.lat,c.lon)<0.05&&(c.lac!=null||c.rac!=null||c.bsc!=null));
+    if(coSite.length) return majorityVote(coSite);
+    const OVL_LRB=0.05; const pooled=[];
+    sectors.forEach(sec=>{
+      const az=parseFloat(sec.azimuth)||0;
+      workingCells.forEach(c=>{
+        if(isNaN(c.lat)||isNaN(c.lon)) return;
+        if(c.lac==null&&c.rac==null&&c.bsc==null) return;
+        const dist=haversineKm(lat,lon,c.lat,c.lon);
+        if(dist<0.05||dist>firstTierRadius) return;
+        const bear=compassBearing(lat,lon,c.lat,c.lon);
+        const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
+        const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
+        if(fwdS>OVL_LRB||revS>OVL_LRB) pooled.push({...c,dist});
+      });
+    });
+    if(pooled.length) return majorityVote(pooled);
+    const nearest=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&haversineKm(lat,lon,c.lat,c.lon)>=0.05&&(c.lac!=null||c.rac!=null||c.bsc!=null)).map(c=>({...c,dist:haversineKm(lat,lon,c.lat,c.lon)})).sort((a,b)=>a.dist-b.dist);
+    if(nearest.length) return {lac:nearest[0].lac,rac:nearest[0].rac,bsc:nearest[0].bsc};
+    return {lac:null,rac:null,bsc:null};
+  })();
+
+  const sectorResults=sectors.map((sec,idx)=>{
+    const az=parseFloat(sec.azimuth)||0;
+    const trx900=sec.trx900||0,trx1800=sec.trx1800||0;
+    const has900=trx900>0,has1800=trx1800>0;
+    const bcchBand=has900?band900:band1800;
+    const tch900Count=has900?Math.max(0,trx900-1):0;
+    const tch1800Count=has900?trx1800:Math.max(0,trx1800-1);
+    const bcchPool=getBcchPool(bcchBand);
+    const tch900Pool=getTchPool(band900||{});
+    const tch1800Pool=band1800?getTchPool(band1800):[];
+    const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+    const scored=workingCells.map(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return null;
+      const dist=haversineKm(lat,lon,c.lat,c.lon);
+      if(dist>cfg.searchRadius||dist<0.05) return null;
+      const bear=compassBearing(lat,lon,c.lat,c.lon);
+      const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
+      const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
+      return {...c,dist,bear,fwdS,revS,overlap:fwdS*revS,relevance:dist/(1+(fwdS*revS)*3)};
+    }).filter(Boolean).sort((a,b)=>a.relevance-b.relevance);
+    const {effectiveTier1,effectiveTier2,effectiveTier3,demotedNames,upgradedNames,shadowedNames}=classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth);
+    const OVL=0.05;
+    const nb900=scored.filter(c=>c.bcch!==null&&!isNaN(Number(c.bcch))&&bandSet900.has(Number(c.bcch)));
+    const allNbBCCHs=[...new Set(nb900.map(c=>Number(c.bcch)).filter(b=>!isNaN(b)))];
+    const tier1BCCHs=new Set(effectiveTier1.filter(c=>bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
+    const tier2BCCHs=new Set(effectiveTier2.filter(c=>bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
+    const inSiteAdj=new Set(); siteReg.bcch.forEach(b=>{inSiteAdj.add(b-1);inSiteAdj.add(b);inSiteAdj.add(b+1);});
+    const inSiteExact=new Set(siteReg.bcch);
+    const bcchWorstOvl=new Map();
+    nb900.forEach(c=>{const b=Number(c.bcch);const ovl=Math.max(c.fwdS||0,c.revS||0);if(!bcchWorstOvl.has(b)||bcchWorstOvl.get(b)<ovl)bcchWorstOvl.set(b,ovl);});
+    const bcchCands=blocked=>bcchPool.filter(a=>!blocked.has(a)&&!inSiteExact.has(a)).map(a=>({a,sep:allNbBCCHs.length?Math.min(...allNbBCCHs.map(u=>Math.abs(a-u))):9999,ovl:bcchWorstOvl.get(a)??0})).sort((x,y)=>{const sx=x.sep*(1-x.ovl),sy=y.sep*(1-y.ovl);return sy-sx||Math.random()-0.5;});
+    const passes=[
+      {mode:"clean",    cands:bcchCands(new Set([...inSiteAdj,...tier1BCCHs,...tier2BCCHs]))},
+      {mode:"t2_reuse", cands:bcchCands(new Set([...inSiteAdj,...tier1BCCHs]))},
+      {mode:"t1_reuse", cands:bcchCands(inSiteAdj)},
+      {mode:"forced",   cands:bcchPool.filter(a=>!inSiteExact.has(a)).map(a=>({a,sep:0}))},
+    ];
+    const bsicPool=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&c.bcch!=null&&!isNaN(Number(c.bcch))&&c.ncc!=null&&!isNaN(Number(c.ncc))&&c.bcc!=null&&!isNaN(Number(c.bcc))).map(c=>({bcch:Number(c.bcch),ncc:Number(c.ncc),bcc:Number(c.bcc),d:haversineKm(lat,lon,c.lat,c.lon)})).filter(c=>c.d>=0.05);
+    let bestBCCH=null,bestNCC=null,bestBCC=null,bcchMode="clean",bestBsicR=0;
+    const bsicMaxR=cfg.bsicRadius??50;
+    const nccOrd=shuffle(nccPool),bccOrd=shuffle([0,1,2,3,4,5,6,7]);
+    passLoop: for(const pass of passes){
+      let r=bsicMaxR;
+      while(r>=1){
+        const forbidden=new Set();
+        bsicPool.filter(c=>c.d<=r).forEach(c=>forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
+        for(const {a} of pass.cands){for(const n of nccOrd){for(const b of bccOrd){if(!forbidden.has(`${a}_${n}_${b}`)){bestBCCH=a;bestNCC=n;bestBCC=b;bcchMode=pass.mode;bestBsicR=r;break passLoop;}}}}
+        r*=0.8;
+      }
+    }
+    if(bestBCCH===null){
+      const freePool=bcchPool.filter(a=>!inSiteExact.has(a));
+      if(freePool.length){bcchMode="forced";bestBCCH=freePool[0];bestNCC=nccPool[0]??0;const cnt=Array(8).fill(0);bsicPool.forEach(c=>cnt[c.bcc]++);bestBCC=cnt.indexOf(Math.min(...cnt));bestBsicR=0;}
+      else{bcchMode="impossible";bestBCCH=null;bestNCC=null;bestBCC=null;bestBsicR=0;}
+    }
+    if(bestBCCH!==null) siteReg.bcch.push(bestBCCH);
+    const bsicRepeatDist=(bestBCCH==null||bestNCC==null||bestBCC==null)?null:(()=>{const m=bsicPool.filter(c=>c.bcch===bestBCCH&&c.ncc===bestNCC&&c.bcc===bestBCC);return m.length===0?null:Math.min(...m.map(c=>c.d));})();
+    const inSiteBCCHSet=new Set([...siteReg.bcch]);
+    const makeNb=(c,tier)=>({...c,tier,isFirstTier:tier===1,hasBeamOverlap:true,
+      tierLabel:upgradedNames.has(c.cellName)&&!shadowedNames.has(c.cellName)?'1st(upgraded)':shadowedNames.has(c.cellName)?'2nd(shadowed)':demotedNames.has(c.cellName)?'2nd(downgraded)':tier===1?'1st':tier===2?'2nd':'3rd',
+      nbRelevance:c.dist/(1+(c.fwdS+c.revS)*3)});
+    const OVL2=0.05;
+    const nbSort=(a,b)=>{const aZ=(a.fwdS<=OVL2&&a.revS<=OVL2)?1:0,bZ=(b.fwdS<=OVL2&&b.revS<=OVL2)?1:0;return aZ-bZ||a.nbRelevance-b.nbRelevance;};
+    const externalNeighbors=[...effectiveTier1.map(c=>makeNb(c,1)).sort(nbSort),...effectiveTier2.map(c=>makeNb(c,2)).sort(nbSort),...effectiveTier3.map(c=>makeNb(c,3)).sort(nbSort)].slice(0,cfg.maxNeighbours);
+    return {idx,az,trx900,trx1800,has900,has1800,tch900Count,tch1800Count,bcchBandName:bcchBand?.name||"—",
+      bcch:bestBCCH,bcchMode,tch900List:[],tch900Mode:'n/a',tch1800List:[],tch1800Mode:'n/a',
+      ncc:bestNCC,bcc:bestBCC,bsic:bestNCC!=null?`${bestNCC}/${bestBCC}`:'—',bsicDec:bestNCC!=null?bestNCC*8+bestBCC:null,
+      bsicRepeatDist,lac:siteLacRacBsc.lac,rac:siteLacRacBsc.rac,bsc:siteLacRacBsc.bsc,
+      externalNeighbors,tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),allNbBCCHs:allNbBCCHs.sort((a,b)=>a-b),
+      stats:{total:scored.length,tier1Count:effectiveTier1.length,tier2Count:effectiveTier2.length,tier3Count:effectiveTier3.length},
+      _scored:scored,_inSiteBCCHSet:inSiteBCCHSet,_tch900Pool:tch900Pool,_tch1800Pool:tch1800Pool};
+  });
+
+  const MODE_RANK={clean:0,'n/a':0,partial:1,site_adj:2,nb_reuse:3,nb_reuse_adj:4,site_reuse:5,reuse:6,impossible:7};
+  const worseMode=(a,b)=>(MODE_RANK[a]??1)>=(MODE_RANK[b]??1)?a:b;
+  const maxRounds=sectorResults.reduce((m,s)=>Math.max(m,s.tch900Count,s.tch1800Count),0);
+  const acc900=sectorResults.map(()=>({list:[],mode:'clean'}));
+  const acc1800=sectorResults.map(()=>({list:[],mode:'clean'}));
+  for(let round=0;round<maxRounds;round++){
+    const sectorOrder=shuffle(sectorResults.map((_,i)=>i));
+    for(const i of sectorOrder){
+      const s=sectorResults[i];
+      if(acc900[i].list.length<s.tch900Count){const {list,mode}=planTCH(s._tch900Pool,s._scored,s._inSiteBCCHSet,siteReg.tch900,1,acc900[i].list);acc900[i].list.push(...list);acc900[i].mode=worseMode(acc900[i].mode,mode);}
+      if(acc1800[i].list.length<s.tch1800Count){const inSiteBCCHSet1800=s.has900?new Set():s._inSiteBCCHSet;const {list,mode}=planTCH(s._tch1800Pool,s._scored,inSiteBCCHSet1800,siteReg.tch1800,1,acc1800[i].list);acc1800[i].list.push(...list);acc1800[i].mode=worseMode(acc1800[i].mode,mode);}
+    }
+  }
+  sectorResults.forEach((s,i)=>{
+    s.tch900List=acc900[i].list.sort((a,b)=>a-b); s.tch900Mode=acc900[i].list.length<s.tch900Count?'partial':acc900[i].mode;
+    s.tch1800List=acc1800[i].list.sort((a,b)=>a-b); s.tch1800Mode=acc1800[i].list.length<s.tch1800Count?'partial':acc1800[i].mode;
+    delete s._scored; delete s._inSiteBCCHSet; delete s._tch900Pool; delete s._tch1800Pool;
+  });
+  const CLEAN_MODES=new Set(['clean']);
+  sectorResults.forEach((sec,i)=>{
+    ['900','1800'].forEach(band=>{
+      const modeKey=`tch${band}Mode`;
+      if(!CLEAN_MODES.has(sec[modeKey])) return;
+      const myTCH=sec[`tch${band}List`]; if(!myTCH||!myTCH.length) return;
+      const hasAdj=sectorResults.some((other,j)=>{if(j===i)return false;return (other[`tch${band}List`]||[]).some(t=>myTCH.some(m=>Math.abs(m-t)===1));});
+      if(hasAdj)sec[modeKey]='site_adj';
+    });
+  });
+  return sectorResults;
+}
+
+// ── planAllSites (verbatim from 2G planner) ────────────────────────────────────
+const yield_ = () => new Promise(r => setTimeout(r, 0));
+async function planAllSites(sites,baseCells,cfg,onProgress) {
+  const maxPasses=Math.max(1,cfg.maxPasses??3);
+  const toVCell=(site,r)=>({cellName:`${site.name}_S${r.idx+1}`,siteName:site.name,lat:parseFloat(site.lat),lon:parseFloat(site.lon),azimuth:r.az,bcch:r.bcch,tchList:[...r.tch900List,...r.tch1800List],ncc:r.ncc,bcc:r.bcc,lac:r.lac,rac:r.rac,bsc:r.bsc,isPlanned:true});
+  const scorePass=results=>{let deg=0,conf=0;results.forEach(({sectorResults})=>{sectorResults.forEach(r=>{if(r.bcchMode!=='clean')deg++;if(r.tier1BCCHs&&r.tier1BCCHs.includes(r.bcch))conf++;});});return [deg,conf];};
+  const isBetter=(a,b)=>a[0]<b[0]||(a[0]===b[0]&&a[1]<b[1]);
+  let lastResults=[];
+  {
+    let wc=[...baseCells];
+    for(let i=0;i<sites.length;i++){
+      const site=sites[i];
+      onProgress&&onProgress(1,i,sites.length,maxPasses,0);
+      await yield_();
+      const sectorResults=planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors},wc,cfg);
+      sectorResults.forEach(r=>wc.push(toVCell(site,r)));
+      lastResults.push({site,sectorResults});
+    }
+    onProgress&&onProgress(1,sites.length,sites.length,maxPasses,0);
+  }
+  let bestResults=lastResults,bestScore=scorePass(lastResults);
+  for(let pass=2;pass<=maxPasses;pass++){
+    const prevVCells={};
+    lastResults.forEach(({site,sectorResults})=>{prevVCells[site.name]=sectorResults.map(r=>toVCell(site,r));});
+    const locked=new Set(lastResults.filter(({sectorResults})=>sectorResults.every(r=>r.bcchMode==='clean')&&!sectorResults.some(r=>r.externalNeighbors.some(nb=>nb.isPlanned))).map(({site})=>site.name));
+    const nextResults=[];
+    for(let i=0;i<sites.length;i++){
+      const site=sites[i];
+      if(locked.has(site.name)){nextResults.push(lastResults.find(r=>r.site.name===site.name));continue;}
+      onProgress&&onProgress(pass,i,sites.length,maxPasses,locked.size);
+      await yield_();
+      const wc=[...baseCells];
+      sites.forEach(s=>{if(s.name!==site.name)(prevVCells[s.name]||[]).forEach(vc=>wc.push(vc));});
+      const sectorResults=planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors},wc,cfg);
+      nextResults.push({site,sectorResults});
+    }
+    onProgress&&onProgress(pass,sites.length,sites.length,maxPasses,locked.size);
+    await yield_();
+    lastResults=nextResults;
+    const s=scorePass(nextResults);
+    if(isBetter(s,bestScore)){bestScore=s;bestResults=nextResults;}
+  }
+  return bestResults;
+}
+
+// ── Build opt sites from target list ─────────────────────────────────────────
+function buildOptSites(targetRows, targetCols, gisCells, paramMap, bands) {
+  const band900=bands[0], band1800=bands[1];
+  const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+  const bandSet1800=new Set(band1800?[...getBcchPool(band1800),...getTchPool(band1800)]:[]);
+
+  const up=s=>(s||"").trim().toUpperCase();
+  const targetBcfs=new Set(), targetSegs=new Set();
+  targetRows.forEach(r=>{
+    if(targetCols.bcf&&r[targetCols.bcf]) targetBcfs.add(up(r[targetCols.bcf]));
+    if(targetCols.segment&&r[targetCols.segment]) targetSegs.add(up(r[targetCols.segment]));
+  });
+
+  const matched=gisCells.filter(c=>targetBcfs.has(up(c.siteName))||targetSegs.has(up(c.cellName)));
+  const siteMap=new Map();
+  matched.forEach(c=>{
+    if(!siteMap.has(c.siteName)) siteMap.set(c.siteName,{name:c.siteName,lat:c.lat,lon:c.lon,sectors:[]});
+    const p=paramMap[c.cellName]||{};
+    const tch=parseTCHList(p.tch||"");
+    const bcch=(p.bcch!==undefined&&p.bcch!=="")?Number(p.bcch):null;
+    const isNaNBcch=bcch===null||isNaN(bcch);
+    const bcchOn900=!isNaNBcch&&bandSet900.has(bcch);
+    const bcchOn1800=!isNaNBcch&&bandSet1800.has(bcch);
+    const tch900=tch.filter(t=>bandSet900.has(t));
+    const tch1800=tch.filter(t=>!bandSet900.has(t));
+    let trx900,trx1800;
+    if(bcchOn900){trx900=1+tch900.length;trx1800=tch1800.length;}
+    else if(bcchOn1800){trx900=tch900.length;trx1800=1+tch1800.length;}
+    else{trx900=Math.max(1,1+tch900.length);trx1800=tch1800.length;}
+
+    let ncc=null,bcc=null;
+    if(p.ncc!==undefined&&p.ncc!==""&&!isNaN(Number(p.ncc))) ncc=Number(p.ncc);
+    if(p.bcc!==undefined&&p.bcc!==""&&!isNaN(Number(p.bcc))) bcc=Number(p.bcc);
+    if((ncc===null||bcc===null)&&p.bsic!==undefined&&p.bsic!==""&&!isNaN(Number(p.bsic))){
+      ncc=Math.floor(Number(p.bsic)/8); bcc=Number(p.bsic)%8;
+    }
+    siteMap.get(c.siteName).sectors.push({
+      cellName:c.cellName, azimuth:parseFloat(c.azimuth)||0,
+      trx900, trx1800,
+      bcch:isNaNBcch?null:bcch, ncc, bcc, tchList:tch,
+      lac:p.lac||null, rac:p.rac||null, bsc:p.bsc||null,
+    });
+  });
+  return [...siteMap.values()];
+}
+
+// ── Audit one site ────────────────────────────────────────────────────────────
+// Evaluates the CURRENT frequency plan — no assignment, read-only.
+function auditOneSite(site, allCells, cfg) {
+  const {lat,lon,sectors}=site;
+  const {firstTierRadius,beamWidth,bsicRadius,searchRadius,bands}=cfg;
+  const band900=bands[0],band1800=bands[1];
+  const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+
+  const sectorAudits=sectors.map((sec,idx)=>{
+    const az=parseFloat(sec.azimuth)||0;
+    const curBcch=sec.bcch, curNcc=sec.ncc, curBcc=sec.bcc, curTch=sec.tchList||[];
+
+    const scored=allCells.map(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return null;
+      const dist=haversineKm(lat,lon,c.lat,c.lon);
+      if(dist>searchRadius||dist<0.05) return null;
+      const bear=compassBearing(lat,lon,c.lat,c.lon);
+      const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
+      const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
+      return {...c,dist,bear,fwdS,revS,overlap:fwdS*revS,relevance:dist/(1+(fwdS*revS)*3)};
+    }).filter(Boolean).sort((a,b)=>a.relevance-b.relevance);
+
+    const {effectiveTier1,effectiveTier2}=classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth);
+
+    const tier1BCCHs=new Set(effectiveTier1.filter(c=>!isNaN(Number(c.bcch))&&bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
+    const tier2BCCHs=new Set(effectiveTier2.filter(c=>!isNaN(Number(c.bcch))&&bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
+
+    let bcchMode='clean';
+    const t1Conflicts=[],t2Conflicts=[];
+    if(curBcch!==null&&!isNaN(curBcch)){
+      if(tier1BCCHs.has(curBcch)){
+        bcchMode='t1_reuse';
+        effectiveTier1.filter(c=>Number(c.bcch)===curBcch).forEach(c=>t1Conflicts.push(c.cellName));
+      } else if(tier2BCCHs.has(curBcch)){
+        bcchMode='t2_reuse';
+        effectiveTier2.filter(c=>Number(c.bcch)===curBcch).forEach(c=>t2Conflicts.push(c.cellName));
+      }
+    }
+
+    // BSIC repeat distance
+    let bsicRepeatDist=null;
+    if(curBcch!==null&&!isNaN(curBcch)&&curNcc!==null&&!isNaN(curNcc)&&curBcc!==null&&!isNaN(curBcc)){
+      const matches=allCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&haversineKm(lat,lon,c.lat,c.lon)>=0.05&&Number(c.bcch)===curBcch&&Number(c.ncc)===curNcc&&Number(c.bcc)===curBcc);
+      if(matches.length) bsicRepeatDist=Math.min(...matches.map(c=>haversineKm(lat,lon,c.lat,c.lon)));
+    }
+    const bsicConflict=bsicRepeatDist!==null&&bsicRepeatDist<(bsicRadius??50);
+
+    // TCH conflicts: any current TCH appearing in scored neighbours' TCH lists
+    const nbTCHSet=new Set(scored.flatMap(c=>(c.tchList||[]).map(Number).filter(v=>!isNaN(v))));
+    const tchConflicts=curTch.filter(t=>nbTCHSet.has(Number(t)));
+
+    const hasConflict=bcchMode!=='clean'||bsicConflict||tchConflicts.length>0;
+    return {idx, cellName:sec.cellName, az,
+      bcch:curBcch, ncc:curNcc, bcc:curBcc,
+      tchList:curTch, bcchMode, t1Conflicts, t2Conflicts,
+      bsicRepeatDist, bsicConflict, tchConflicts, hasConflict};
+  });
+
+  return {siteName:site.name, sectorAudits, hasConflict:sectorAudits.some(s=>s.hasConflict)};
+}
+
+// ── Audit all sites + summarise ───────────────────────────────────────────────
+function auditAllSites(optSites, allCells, cfg) {
+  const results=optSites.map(s=>auditOneSite(s,allCells,cfg));
+  let t1=0,t2=0,bsic=0,tch=0;
+  results.forEach(r=>r.sectorAudits.forEach(s=>{
+    if(s.bcchMode==='t1_reuse') t1++;
+    else if(s.bcchMode==='t2_reuse') t2++;
+    if(s.bsicConflict) bsic++;
+    if(s.tchConflicts.length>0) tch++;
+  }));
+  const total=t1+t2+bsic+tch>0?results.reduce((n,r)=>n+r.sectorAudits.filter(s=>s.hasConflict).length,0):0;
+  return {siteAudits:results, summary:{t1,t2,bsic,tch,total}};
+}
+
+// ── Iteration recommendation ──────────────────────────────────────────────────
+function recommendIterations(optSites, searchRadius) {
+  if(optSites.length<=1) return {passes:1,reason:"Only one site — single pass is sufficient."};
+  const counts=optSites.map(s=>optSites.filter(o=>o.name!==s.name&&haversineKm(s.lat,s.lon,o.lat,o.lon)<=searchRadius).length);
+  const avg=counts.reduce((a,b)=>a+b,0)/optSites.length;
+  if(avg===0) return {passes:1,reason:"No optimization sites are within each other's search radius — single pass is sufficient."};
+  if(avg<2)   return {passes:2,reason:`Average ${avg.toFixed(1)} neighboring optimization sites per site — 2 passes recommended.`};
+  if(avg<4)   return {passes:3,reason:`Average ${avg.toFixed(1)} neighboring optimization sites per site — 3 passes recommended.`};
+  return      {passes:5,reason:`Dense cluster: average ${avg.toFixed(1)} neighboring optimization sites — 5 passes recommended.`};
+}
+
+// ── BSIC-only optimizer ───────────────────────────────────────────────────────
+function bsicOnlyPlanOneSite(site, workingCells, cfg, fixConflictsOnly) {
+  const {lat,lon,sectors}=site;
+  const nccPool=parseARFCNList(cfg.nccStr||"0-7").filter(n=>n>=0&&n<=7);
+  const bsicMaxR=cfg.bsicRadius??50;
+
+  // Pre-build bsicPool from workingCells
+  const bsicPool=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&c.bcch!=null&&!isNaN(Number(c.bcch))&&c.ncc!=null&&!isNaN(Number(c.ncc))&&c.bcc!=null&&!isNaN(Number(c.bcc))).map(c=>({bcch:Number(c.bcch),ncc:Number(c.ncc),bcc:Number(c.bcc),d:haversineKm(lat,lon,c.lat,c.lon)})).filter(c=>c.d>=0.05);
+
+  const siteAssignedBSICs=[];
+
+  return sectors.map((sec,idx)=>{
+    const curBcch=sec.bcch, curNcc=sec.ncc, curBcc=sec.bcc;
+
+    // Check if there's an actual BSIC conflict for this sector
+    let curBsicRepeat=null;
+    if(curBcch!==null&&!isNaN(curBcch)&&curNcc!==null&&!isNaN(curNcc)&&curBcc!==null&&!isNaN(curBcc)){
+      const m=bsicPool.filter(c=>c.bcch===curBcch&&c.ncc===curNcc&&c.bcc===curBcc);
+      if(m.length) curBsicRepeat=Math.min(...m.map(c=>c.d));
+    }
+    const hasBsicConflict=curBsicRepeat!==null&&curBsicRepeat<bsicMaxR;
+
+    if(fixConflictsOnly&&!hasBsicConflict){
+      // No conflict — keep current NCC/BCC
+      siteAssignedBSICs.push({bcch:curBcch,ncc:curNcc,bcc:curBcc});
+      return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:curNcc,newBcc:curBcc,changed:false,changeType:'none'};
+    }
+
+    if(curBcch===null||isNaN(curBcch)){
+      siteAssignedBSICs.push({bcch:curBcch,ncc:curNcc,bcc:curBcc});
+      return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:curNcc,newBcc:curBcc,changed:false,changeType:'no_bcch'};
+    }
+
+    const siteExclude=new Set(siteAssignedBSICs.map(b=>`${b.bcch}_${b.ncc}_${b.bcc}`));
+
+    // Pass 1: NCC-only change (keep currentBcc)
+    let bestNcc=null,bestBcc=null,changeType='none';
+    if(curBcc!==null&&!isNaN(curBcc)){
+      outer1: for(let r=bsicMaxR;r>=1;r*=0.8){
+        const forbidden=new Set();
+        bsicPool.filter(c=>c.d<=r).forEach(c=>forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
+        for(const n of shuffle(nccPool)){
+          const key=`${curBcch}_${n}_${curBcc}`;
+          if(!forbidden.has(key)&&!siteExclude.has(key)){
+            bestNcc=n; bestBcc=curBcc;
+            changeType=n===curNcc?'none':'ncc_only';
+            break outer1;
+          }
+        }
+      }
+    }
+
+    // Pass 2: any (NCC, BCC) — last resort
+    if(bestNcc===null){
+      const bccOrd=shuffle([0,1,2,3,4,5,6,7]);
+      outer2: for(let r=bsicMaxR;r>=1;r*=0.8){
+        const forbidden=new Set();
+        bsicPool.filter(c=>c.d<=r).forEach(c=>forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
+        for(const n of shuffle(nccPool)){
+          for(const b of bccOrd){
+            const key=`${curBcch}_${n}_${b}`;
+            if(!forbidden.has(key)&&!siteExclude.has(key)){
+              bestNcc=n; bestBcc=b; changeType='ncc_and_bcc'; break outer2;
+            }
+          }
+        }
+      }
+    }
+
+    if(bestNcc===null){
+      siteAssignedBSICs.push({bcch:curBcch,ncc:curNcc,bcc:curBcc});
+      return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:curNcc,newBcc:curBcc,changed:false,changeType:'impossible'};
+    }
+
+    siteAssignedBSICs.push({bcch:curBcch,ncc:bestNcc,bcc:bestBcc});
+    return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:bestNcc,newBcc:bestBcc,changed:bestNcc!==curNcc||bestBcc!==curBcc,changeType};
+  });
+}
+
+async function bsicOnlyPlanAllSites(optSites, baseCells, cfg, fixConflictsOnly, onProgress) {
+  const maxPasses=Math.max(1,cfg.maxPasses??3);
+  const bsicMaxR=cfg.bsicRadius??50;
+
+  const toVCellBSIC=(site,r)=>({
+    cellName:r.cellName||`${site.name}_S${r.idx+1}`, siteName:site.name,
+    lat:site.lat, lon:site.lon, azimuth:site.sectors[r.idx]?.azimuth||0,
+    bcch:r.bcch, ncc:r.newNcc, bcc:r.newBcc,
+    tchList:site.sectors[r.idx]?.tchList||[], isPlanned:true
+  });
+
+  const scoreBSIC=results=>{
+    let n=0;
+    results.forEach(({site,secResults})=>secResults.forEach(r=>{
+      const d=baseCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&c.bcch===r.bcch&&c.ncc===r.newNcc&&c.bcc===r.newBcc).map(c=>haversineKm(site.lat,site.lon,c.lat,c.lon)).filter(d=>d>=0.05);
+      if(d.length&&Math.min(...d)<bsicMaxR) n++;
+    }));
+    return n;
+  };
+
+  const isLockedBSIC=({site,secResults})=>{
+    const allGood=secResults.every(r=>{
+      const m=baseCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&Number(c.bcch)===r.bcch&&Number(c.ncc)===r.newNcc&&Number(c.bcc)===r.newBcc&&haversineKm(site.lat,site.lon,c.lat,c.lon)>=0.05);
+      const dist=m.length?Math.min(...m.map(c=>haversineKm(site.lat,site.lon,c.lat,c.lon))):Infinity;
+      return dist>=bsicMaxR;
+    });
+    if(!allGood) return false;
+    return optSites.every(other=>other.name===site.name||haversineKm(site.lat,site.lon,other.lat,other.lon)>bsicMaxR);
+  };
+
+  // Pass 1: sequential
+  let lastResults=[];
+  {
+    let wc=[...baseCells];
+    for(let i=0;i<optSites.length;i++){
+      const site=optSites[i];
+      onProgress&&onProgress(1,i,optSites.length,maxPasses,0);
+      await yield_();
+      const secResults=bsicOnlyPlanOneSite(site,wc,cfg,fixConflictsOnly);
+      secResults.forEach(r=>wc.push(toVCellBSIC(site,r)));
+      lastResults.push({site,secResults});
+    }
+    onProgress&&onProgress(1,optSites.length,optSites.length,maxPasses,0);
+  }
+
+  let bestResults=lastResults, bestScore=scoreBSIC(lastResults);
+
+  for(let pass=2;pass<=maxPasses;pass++){
+    const prevVCells=Object.fromEntries(lastResults.map(r=>[r.site.name,r.secResults.map(s=>toVCellBSIC(r.site,s))]));
+    const locked=new Set(lastResults.filter(isLockedBSIC).map(r=>r.site.name));
+    const nextResults=[];
+    for(let i=0;i<optSites.length;i++){
+      const site=optSites[i];
+      if(locked.has(site.name)){nextResults.push(lastResults.find(r=>r.site.name===site.name));continue;}
+      onProgress&&onProgress(pass,i,optSites.length,maxPasses,locked.size);
+      await yield_();
+      const wc=[...baseCells];
+      optSites.forEach(s=>{if(s.name!==site.name)(prevVCells[s.name]||[]).forEach(vc=>wc.push(vc));});
+      const secResults=bsicOnlyPlanOneSite(site,wc,cfg,fixConflictsOnly);
+      nextResults.push({site,secResults});
+    }
+    await yield_();
+    lastResults=nextResults;
+    const s=scoreBSIC(nextResults);
+    if(s<bestScore){bestScore=s;bestResults=nextResults;}
+  }
+  onProgress&&onProgress(maxPasses,optSites.length,optSites.length,maxPasses,0);
+  return bestResults;
+}
+
+// ── Build result rows from optimization output ────────────────────────────────
+function buildResultRows(optSites, beforeAudit, optOutput, optWhat, baseCells, cfg) {
+  const rows=[];
+
+  optOutput.forEach(({site, sectorResults, secResults})=>{
+    const beforeSite=beforeAudit.siteAudits.find(a=>a.siteName===site.name);
+    const sectors=sectorResults||secResults; // full or bsic-only
+
+    sectors.forEach((res,si)=>{
+      const sec=site.sectors[si];
+      const before=beforeSite?.sectorAudits[si];
+
+      if(optWhat==='bsic_only'){
+        const r=res;
+        const newBsicRepeat=(()=>{
+          if(r.bcch===null||r.newNcc===null||r.newBcc===null) return null;
+          const m=baseCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&Number(c.bcch)===r.bcch&&Number(c.ncc)===r.newNcc&&Number(c.bcc)===r.newBcc&&haversineKm(site.lat,site.lon,c.lat,c.lon)>=0.05);
+          if(!m.length) return null;
+          return Math.min(...m.map(c=>haversineKm(site.lat,site.lon,c.lat,c.lon)));
+        })();
+        rows.push({
+          BCF:site.name, Segment:sec.cellName||`S${si+1}`, Azimuth:Math.round(parseFloat(sec.azimuth)||0),
+          BCCH:r.bcch??'',
+          Old_NCC:r.oldNcc??'', Old_BCC:r.oldBcc??'',
+          Old_BSIC:r.oldNcc!=null&&r.oldBcc!=null?`${r.oldNcc}/${r.oldBcc}`:'',
+          New_NCC:r.newNcc??'', New_BCC:r.newBcc??'',
+          New_BSIC:r.newNcc!=null&&r.newBcc!=null?`${r.newNcc}/${r.newBcc}`:'',
+          BSIC_Changed:r.changed?'YES':'NO',
+          Change_Type:r.changeType,
+          Old_BSIC_Sep_km:before?.bsicRepeatDist!=null?Math.round(before.bsicRepeatDist*10)/10:'∞',
+          New_BSIC_Sep_km:newBsicRepeat!=null?Math.round(newBsicRepeat*10)/10:'∞',
+        });
+      } else {
+        const r=res;
+        const newTch=[...(r.tch900List||[]),...(r.tch1800List||[])];
+        const oldTch=(sec.tchList||[]).map(Number).filter(v=>!isNaN(v));
+        const tchChanged=newTch.sort((a,b)=>a-b).join(',')!==oldTch.sort((a,b)=>a-b).join(',');
+        rows.push({
+          BCF:site.name, Segment:sec.cellName||`S${si+1}`, Azimuth:Math.round(parseFloat(sec.azimuth)||0),
+          Old_BCCH:sec.bcch??'', New_BCCH:r.bcch??'',
+          BCCH_Changed:r.bcch!==sec.bcch?'YES':'NO',
+          Old_NCC:sec.ncc??'', Old_BCC:sec.bcc??'',
+          Old_BSIC:sec.ncc!=null&&sec.bcc!=null?`${sec.ncc}/${sec.bcc}`:'',
+          New_NCC:r.ncc??'', New_BCC:r.bcc??'',
+          New_BSIC:r.ncc!=null&&r.bcc!=null?`${r.ncc}/${r.bcc}`:'',
+          BSIC_Changed:(r.ncc!==sec.ncc||r.bcc!==sec.bcc)?'YES':'NO',
+          Old_BCCH_Mode:before?.bcchMode||'', New_BCCH_Mode:r.bcchMode,
+          Old_BSIC_Sep_km:before?.bsicRepeatDist!=null?Math.round(before.bsicRepeatDist*10)/10:'∞',
+          New_BSIC_Sep_km:r.bsicRepeatDist!=null?Math.round(r.bsicRepeatDist*10)/10:'∞',
+          Old_TCH:oldTch.join(' '), New_TCH:newTch.join(' '),
+          TCH_Changed:tchChanged?'YES':'NO',
+        });
+      }
+    });
+  });
+  return rows;
+}
+
+// ── Export XLSX ───────────────────────────────────────────────────────────────
+function exportOptimizer(rows) {
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const HDR={fill:{patternType:'solid',fgColor:{rgb:'1D4ED8'}},font:{bold:true,color:{rgb:'FFFFFF'}},alignment:{horizontal:'center',vertical:'center'}};
+  if(ws['!ref']){
+    const range=XLSX.utils.decode_range(ws['!ref']);
+    for(let C=range.s.c;C<=range.e.c;C++){const addr=XLSX.utils.encode_cell({r:0,c:C});if(ws[addr])ws[addr].s=HDR;}
+    ws['!views']=[{state:'frozen',xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft'}];
+  }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Optimization Results");
+  XLSX.writeFile(wb,'2g_optimizer_results.xlsx',{cellStyles:true});
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function Steps({current}) {
+  const items=["Load data","Configure","Audit","Results"];
+  return (
+    <div className="steps">
+      {items.map((t,i)=>{
+        const n=i+1;
+        const cls=n===current?"step active":n<current?"step done":"step";
+        return <div key={n} className={cls}><div className="dot">{n<current?"✓":n}</div><div style={{fontWeight:800}}>{t}</div></div>;
+      })}
+    </div>
+  );
+}
+
+function FileBlock({title,hint,onLoad,sheetHint}) {
+  const ref=useRef(null);
+  const [loading,setLoading]=useState(false);
+  const [meta,setMeta]=useState(null);
+  const handle=async e=>{
+    const f=e.target.files[0]; if(!f) return; setLoading(true);
+    try{const d=await parseFile(f,sheetHint);setMeta({rows:d.rows.length,sheet:d.sheetName});onLoad(d,f.name);}
+    catch(err){alert("Failed to read file: "+(err?.message||err));}
+    finally{setLoading(false);}
+  };
+  return (
+    <div className="card">
+      <div style={{fontWeight:900,fontSize:14}}>{title}</div>
+      <div className="small" style={{margin:"6px 0 10px"}}>{hint}</div>
+      <input ref={ref} type="file" accept=".csv,.xlsx,.xls,.txt" style={{display:"none"}} onChange={handle}/>
+      <button onClick={()=>ref.current?.click()} disabled={loading}>{loading?"Reading…":"Upload file"}</button>
+      {meta&&<div className="ok">✓ {meta.rows.toLocaleString()} rows{meta.sheet?` · sheet: "${meta.sheet}"`:""}
+      </div>}
+    </div>
+  );
+}
+
+function ColMapper({headers,mapping,onChange,fields}) {
+  return (
+    <div className="card" style={{marginTop:-6}}>
+      <div style={{fontWeight:900,marginBottom:10}}>Column mapping</div>
+      <div className="row">
+        {Object.entries(fields).map(([key,label])=>(
+          <div className="col" key={key} style={{minWidth:200}}>
+            <div className="label">{label}</div>
+            <select className="mono" value={mapping[key]||""} onChange={e=>onChange({...mapping,[key]:e.target.value})}>
+              <option value="">— select —</option>
+              {headers.map(h=><option key={h} value={h}>{h}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModeBadge({mode}) {
+  const cls=mode==='clean'?'badge badge-clean':mode==='t2_reuse'?'badge badge-t2':mode==='t1_reuse'||mode==='forced'||mode==='impossible'?'badge badge-t1':'badge badge-info';
+  return <span className={cls}>{mode||'—'}</span>;
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  const [step,setStep]=useState(1);
+  const [err,setErr]=useState("");
+
+  const [gisData,setGisData]=useState(null);
+  const [gisMap,setGisMap]=useState({});
+  const [paramData,setParamData]=useState(null);
+  const [paramMap,setParamMap]=useState({});
+  const [targetData,setTargetData]=useState(null);
+  const [targetMap,setTargetMap]=useState({});
+
+  const [cfg,setCfg]=useState({
+    searchRadius:10,firstTierRadius:5,bsicRadius:50,beamWidth:65,
+    nccStr:"0-7",maxNeighbours:10,maxPasses:3,
+    bands:[
+      {name:"GSM-900",  bcchStr:"76-87",         tchStr:"88-101, 123, 124"},
+      {name:"GSM-1800", bcchStr:"562,563,610",    tchStr:"564-571,601-610"},
+    ]
+  });
+
+  const [auditResult,setAuditResult]=useState(null);
+  const [optSites,setOptSites]=useState(null);
+  const [allCells,setAllCells]=useState(null);
+  const [baseCells,setBaseCells]=useState(null);
+  const [iterRec,setIterRec]=useState(null);
+
+  const [optScope,setOptScope]=useState("conflicts_only");
+  const [optWhat,setOptWhat]=useState("full");
+  const [optPasses,setOptPasses]=useState(3);
+
+  const [results,setResults]=useState(null);
+  const [resultRows,setResultRows]=useState([]);
+  const [afterSummary,setAfterSummary]=useState(null);
+  const [planning,setPlanning]=useState(false);
+  const [prog,setProg]=useState({pass:1,totalPasses:1,done:0,total:0,siteName:"",locked:0});
+
+  const canStep2=gisData&&paramData&&targetData;
+
+  const onGisLoad=d=>{setGisData(d);setGisMap(detectGISCols(d.headers));};
+  const onParamLoad=d=>{setParamData(d);setParamMap(detectParamCols(d.headers));};
+  const onTargetLoad=d=>{setTargetData(d);setTargetMap(detectTargetCols(d.headers));};
+
+  const runAudit=()=>{
+    setErr("");
+    if(!gisData||!paramData||!targetData){setErr("Upload all 3 files first.");return;}
+
+    // Build GIS cell list
+    const gisCells=gisData.rows.map(r=>{
+      const siteName=(r[gisMap.siteName]||"").trim();
+      const cellName=(r[gisMap.cellName]||"").trim();
+      const lat=parseFloat(r[gisMap.lat]),lon=parseFloat(r[gisMap.lon]);
+      const azimuth=parseFloat(r[gisMap.azimuth])||0;
+      if(!siteName||!cellName||isNaN(lat)||isNaN(lon)) return null;
+      return {siteName,cellName,lat,lon,azimuth};
+    }).filter(Boolean);
+    if(!gisCells.length){setErr("No valid GIS rows — check column mapping.");return;}
+
+    // Build param lookup
+    const pLookup={};
+    paramData.rows.forEach(r=>{
+      const cn=(r[paramMap.cellName]||"").trim(); if(!cn) return;
+      pLookup[cn]={
+        bcch:r[paramMap.bcch]||"",
+        tch:r[paramMap.tch]||"",
+        ncc:r[paramMap.ncc]||"",
+        bcc:r[paramMap.bcc]||"",
+        bsic:r[paramMap.bsic]||"",
+        lac:r[paramMap.lac]||null,
+        rac:r[paramMap.rac]||null,
+        bsc:r[paramMap.bsc]||null,
+      };
+    });
+
+    // Build full network cells (for audit context)
+    const network=gisCells.map(c=>{
+      const p=pLookup[c.cellName]||{};
+      const bcch=(p.bcch!==""&&!isNaN(Number(p.bcch)))?Number(p.bcch):null;
+      let ncc=null,bcc=null;
+      if(p.ncc!==""&&!isNaN(Number(p.ncc)))ncc=Number(p.ncc);
+      if(p.bcc!==""&&!isNaN(Number(p.bcc)))bcc=Number(p.bcc);
+      if((ncc===null||bcc===null)&&p.bsic!==""&&!isNaN(Number(p.bsic))){ncc=Math.floor(Number(p.bsic)/8);bcc=Number(p.bsic)%8;}
+      return {...c,bcch,ncc,bcc,tchList:parseTCHList(p.tch||""),lac:p.lac,rac:p.rac,bsc:p.bsc};
+    });
+
+    // Build opt sites
+    const opts=buildOptSites(targetData.rows,targetMap,gisCells,pLookup,cfg.bands);
+    if(!opts.length){setErr("No matching BCF/Segment found in GIS data — check target list and column mapping.");return;}
+
+    // Base cells = full network minus opt sites
+    const optSiteNames=new Set(opts.map(s=>s.name));
+    const base=network.filter(c=>!optSiteNames.has(c.siteName));
+
+    const audit=auditAllSites(opts,network,cfg);
+    const rec=recommendIterations(opts,cfg.searchRadius);
+
+    setAllCells(network);
+    setBaseCells(base);
+    setOptSites(opts);
+    setAuditResult(audit);
+    setIterRec(rec);
+    setOptPasses(rec.passes);
+    setStep(3);
+  };
+
+  const runOptimize=async()=>{
+    setErr("");setResults(null);setPlanning(true);
+    const cfgWithPasses={...cfg,maxPasses:Math.max(1,Number(optPasses)||1)};
+    const fixOnly=optScope==="conflicts_only";
+
+    // For "fix conflicts only" in full mode: only re-plan conflicted sites
+    const sitesToPlan=fixOnly
+      ? optSites.filter(s=>auditResult.siteAudits.find(a=>a.siteName===s.name)?.hasConflict)
+      : optSites;
+
+    // Sites NOT being re-planned: treat as base cells
+    const extraBase=optWhat==='full'
+      ? optSites.filter(s=>!sitesToPlan.find(p=>p.name===s.name)).flatMap(s=>s.sectors.map(sec=>({siteName:s.name,cellName:sec.cellName,lat:s.lat,lon:s.lon,azimuth:sec.azimuth,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,tchList:sec.tchList})))
+      : [];
+    const effectiveBase=[...baseCells,...extraBase];
+
+    setProg({pass:1,totalPasses:cfgWithPasses.maxPasses,done:0,total:sitesToPlan.length,siteName:"",locked:0});
+
+    try{
+      let optOutput;
+
+      if(optWhat==='bsic_only'){
+        const rawOut=await bsicOnlyPlanAllSites(
+          sitesToPlan, effectiveBase, cfgWithPasses, fixOnly,
+          (pass,done,total,totalPasses,locked)=>setProg({pass,totalPasses,done,total,siteName:sitesToPlan[done]?.name||"",locked})
+        );
+        // Merge: sites not in sitesToPlan keep their current values
+        optOutput=optSites.map(site=>{
+          const planned=rawOut.find(r=>r.site.name===site.name);
+          if(planned) return {site,secResults:planned.secResults};
+          return {site,secResults:site.sectors.map((sec,idx)=>({idx,cellName:sec.cellName,bcch:sec.bcch,oldNcc:sec.ncc,oldBcc:sec.bcc,newNcc:sec.ncc,newBcc:sec.bcc,changed:false,changeType:'none'}))};
+        });
+      } else {
+        const rawOut=await planAllSites(
+          sitesToPlan.map(s=>({...s,sectors:s.sectors.map(sec=>({...sec,trx900:sec.trx900||1,trx1800:sec.trx1800||0}))})),
+          effectiveBase, cfgWithPasses,
+          (pass,i,total,totalPasses,locked)=>setProg({pass,totalPasses,done:i,total,siteName:sitesToPlan[i]?.name||"",locked})
+        );
+        optOutput=optSites.map(site=>{
+          const planned=rawOut.find(r=>r.site.name===site.name);
+          if(planned) return {site,sectorResults:planned.sectorResults};
+          return {site,sectorResults:site.sectors.map((sec,idx)=>({idx,az:sec.azimuth,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,bcchMode:'clean',tch900List:[],tch1800List:[],bsicRepeatDist:null}))};
+        });
+      }
+
+      // Build result rows
+      const rRows=buildResultRows(optSites,auditResult,optOutput,optWhat,baseCells,cfg);
+
+      // Post-audit for after-summary
+      const newNetwork=optOutput.flatMap(({site,sectorResults,secResults})=>{
+        const sectors=sectorResults||secResults;
+        return sectors.map((r,i)=>({
+          siteName:site.name,cellName:site.sectors[i]?.cellName||`${site.name}_S${i+1}`,
+          lat:site.lat,lon:site.lon,azimuth:site.sectors[i]?.azimuth||0,
+          bcch:optWhat==='bsic_only'?r.bcch:(r.bcch??site.sectors[i]?.bcch),
+          ncc:optWhat==='bsic_only'?r.newNcc:(r.ncc??site.sectors[i]?.ncc),
+          bcc:optWhat==='bsic_only'?r.newBcc:(r.bcc??site.sectors[i]?.bcc),
+          tchList:optWhat==='bsic_only'?site.sectors[i]?.tchList||[]:([...(r.tch900List||[]),(r.tch1800List||[])]),
+        }));
+      });
+      const afterNetwork=[...baseCells,...newNetwork];
+      const afterAudit=auditAllSites(optSites,afterNetwork,cfg);
+      setAfterSummary(afterAudit.summary);
+      setResults(optOutput);
+      setResultRows(rRows);
+      setStep(4);
+    } catch(ex){
+      setErr("Optimization error: "+(ex?.message||ex));
+    } finally{setPlanning(false);}
+  };
+
+  const pct=prog.total>0?Math.min(100,Math.round(prog.done/prog.total*100)):0;
+
+  return (
+    <div>
+      <div className="card">
+        <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:280}}>
+            <div style={{fontSize:18,fontWeight:1000}}>2G Frequency Optimizer</div>
+            <div className="small" style={{marginTop:6}}>
+              Audits the current BCCH / BSIC / TCH plan of existing sites and suggests frequency changes to resolve conflicts.
+            </div>
+          </div>
+          <Steps current={step}/>
+        </div>
+      </div>
+
+      {err&&<div className="err">⚠ {err}</div>}
+
+      {/* ── Step 1: Load data ── */}
+      {step===1&&(
+        <div>
+          <div className="row">
+            <div className="col">
+              <FileBlock title="1) GIS database (CSV/XLSX)" hint="Required: BCF/site, Segment/cell, Latitude, Longitude, Azimuth" onLoad={onGisLoad}/>
+              {gisData&&<ColMapper headers={gisData.headers} mapping={gisMap} onChange={setGisMap} fields={{siteName:"BCF / Site name *",cellName:"Segment / Cell name *",lat:"Latitude *",lon:"Longitude *",azimuth:"Azimuth *"}}/>}
+            </div>
+            <div className="col">
+              <FileBlock title="2) CM Export / Parameters (CSV/XLSX)" hint='Required: Segment, BCCH, TCH/MA list, NCC, BCC (or BSIC). Default sheet: "Cell Details".' onLoad={onParamLoad} sheetHint="Cell Details"/>
+              {paramData&&<ColMapper headers={paramData.headers} mapping={paramMap} onChange={setParamMap} fields={{cellName:"Segment *",bcch:"BCCH *",tch:"TCH / MA list *",ncc:"NCC",bcc:"BCC",bsic:"BSIC (if NCC/BCC absent)",lac:"LAC",rac:"RAC",bsc:"BSC"}}/>}
+            </div>
+            <div className="col">
+              <FileBlock title="3) Sites to optimize (CSV/XLSX)" hint="One row per BCF or Segment to audit. Mixed lists accepted." onLoad={onTargetLoad}/>
+              {targetData&&<ColMapper headers={targetData.headers} mapping={targetMap} onChange={setTargetMap} fields={{bcf:"BCF / Site name column",segment:"Segment / Cell name column"}}/>}
+            </div>
+          </div>
+          <div style={{marginTop:8}}>
+            <button className="primary" disabled={!canStep2} onClick={()=>{if(!canStep2){setErr("Upload all 3 files first.");}else{setErr("");setStep(2);}}}>Continue → Configure</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2: Configure ── */}
+      {step===2&&(
+        <div className="card">
+          <div style={{fontSize:15,fontWeight:1000,marginBottom:14}}>Configuration</div>
+          <div className="grid2">
+            <div><div className="label">Search radius (km)</div><input className="mono" value={cfg.searchRadius} onChange={e=>setCfg(c=>({...c,searchRadius:e.target.value}))}/></div>
+            <div><div className="label">1st tier radius (km)</div><input className="mono" value={cfg.firstTierRadius} onChange={e=>setCfg(c=>({...c,firstTierRadius:e.target.value}))}/></div>
+            <div><div className="label">BSIC uniqueness radius (km)</div><input className="mono" value={cfg.bsicRadius} onChange={e=>setCfg(c=>({...c,bsicRadius:e.target.value}))}/></div>
+            <div><div className="label">Beam width (°)</div><input className="mono" value={cfg.beamWidth} onChange={e=>setCfg(c=>({...c,beamWidth:e.target.value}))}/></div>
+            <div><div className="label">NCC pool</div><input className="mono" value={cfg.nccStr} onChange={e=>setCfg(c=>({...c,nccStr:e.target.value}))}/></div>
+            <div><div className="label">Max neighbours per sector</div><input className="mono" value={cfg.maxNeighbours} onChange={e=>setCfg(c=>({...c,maxNeighbours:e.target.value}))}/></div>
+          </div>
+          {cfg.bands.map((bd,bi)=>(
+            <div key={bi} style={{marginTop:14,padding:"12px 14px",background:"var(--color-background-tertiary)",borderRadius:"var(--border-radius-lg)",border:"1px solid var(--color-border-tertiary)"}}>
+              <div style={{fontWeight:700,marginBottom:10}}>{bd.name}</div>
+              <div className="grid2">
+                <div><div className="label">BCCH pool (ARFCNs)</div><input className="mono" value={bd.bcchStr} onChange={e=>setCfg(c=>{const b=[...c.bands];b[bi]={...b[bi],bcchStr:e.target.value};return {...c,bands:b};})}/></div>
+                <div><div className="label">TCH pool (ARFCNs)</div><input className="mono" value={bd.tchStr} onChange={e=>setCfg(c=>{const b=[...c.bands];b[bi]={...b[bi],tchStr:e.target.value};return {...c,bands:b};})}/></div>
+              </div>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:10,marginTop:16}}>
+            <button onClick={()=>setStep(1)}>← Back</button>
+            <button className="primary" onClick={runAudit}>Run Audit →</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Audit ── */}
+      {step===3&&auditResult&&(
+        <div>
+          {/* Summary */}
+          <div className="summary-box">
+            <div style={{fontWeight:800,fontSize:15,marginBottom:8}}>Current plan quality</div>
+            <div className="stat-grid">
+              <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.t1>0?"#9B2020":"var(--nokia-dark-blue)"}}>{auditResult.summary.t1}</div><div className="stat-label">T1 BCCH conflicts</div></div>
+              <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.t2>0?"#7A4F00":"var(--nokia-dark-blue)"}}>{auditResult.summary.t2}</div><div className="stat-label">T2 BCCH conflicts</div></div>
+              <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.bsic>0?"#9B2020":"var(--nokia-dark-blue)"}}>{auditResult.summary.bsic}</div><div className="stat-label">BSIC conflicts</div></div>
+              <div className="stat-cell"><div className="stat-val" style={{color:auditResult.summary.tch>0?"#7A4F00":"var(--nokia-dark-blue)"}}>{auditResult.summary.tch}</div><div className="stat-label">TCH conflicts</div></div>
+              <div className="stat-cell"><div className="stat-val">{auditResult.summary.total}</div><div className="stat-label">Sectors with any conflict</div></div>
+            </div>
+          </div>
+
+          {/* Audit table */}
+          <div className="card" style={{overflowX:"auto",padding:0,marginBottom:14}}>
+            <table>
+              <thead>
+                <tr>
+                  <th>BCF</th><th>Segment</th><th>Az</th><th>BCCH</th>
+                  <th>BCCH Mode</th><th>T1 Conflicting cells</th>
+                  <th>BSIC Sep (km)</th><th>BSIC Conflict</th><th>TCH Conflicts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditResult.siteAudits.map(site=>
+                  site.sectorAudits.map((sec,si)=>(
+                    <tr key={`${site.siteName}-${si}`} style={sec.hasConflict?{background:"#FFF9C4"}:{}}>
+                      <td>{site.siteName}</td>
+                      <td className="mono">{sec.cellName||`S${si+1}`}</td>
+                      <td className="mono">{Math.round(sec.az)}</td>
+                      <td className="mono">{sec.bcch??'—'}</td>
+                      <td><ModeBadge mode={sec.bcchMode}/></td>
+                      <td className="small mono" style={{maxWidth:200,wordBreak:"break-all"}}>{[...sec.t1Conflicts,...sec.t2Conflicts].join(", ")||"—"}</td>
+                      <td className="mono">{sec.bsicRepeatDist!=null?Math.round(sec.bsicRepeatDist*10)/10:"∞"}</td>
+                      <td>{sec.bsicConflict?<span className="badge badge-t1">YES</span>:<span className="badge badge-clean">OK</span>}</td>
+                      <td className="mono">{sec.tchConflicts.length>0?sec.tchConflicts.join(", "):"—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Iteration recommendation */}
+          {iterRec&&(
+            <div className="rec-box">
+              <div style={{fontWeight:700,marginBottom:4}}>Iteration recommendation</div>
+              <div className="small">{iterRec.reason}</div>
+            </div>
+          )}
+
+          {/* Optimization settings */}
+          <div className="card">
+            <div style={{fontWeight:800,fontSize:14,marginBottom:14}}>Optimization settings</div>
+            <div className="grid2">
+              <div>
+                <div className="label">Scope</div>
+                <div className="radio-group">
+                  <label className="radio-opt"><input type="radio" name="scope" value="conflicts_only" checked={optScope==="conflicts_only"} onChange={e=>setOptScope(e.target.value)}/> Fix conflicts only</label>
+                  <label className="radio-opt"><input type="radio" name="scope" value="all" checked={optScope==="all"} onChange={e=>setOptScope(e.target.value)}/> All listed sites</label>
+                </div>
+              </div>
+              <div>
+                <div className="label">What to change</div>
+                <div className="radio-group">
+                  <label className="radio-opt"><input type="radio" name="what" value="full" checked={optWhat==="full"} onChange={e=>setOptWhat(e.target.value)}/> Full (BCCH + BSIC + TCH)</label>
+                  <label className="radio-opt"><input type="radio" name="what" value="bsic_only" checked={optWhat==="bsic_only"} onChange={e=>setOptWhat(e.target.value)}/> BSIC only (NCC/BCC — NCC-first)</label>
+                </div>
+              </div>
+              <div>
+                <div className="label">Planning passes</div>
+                <input className="mono" style={{maxWidth:100}} value={optPasses} onChange={e=>setOptPasses(e.target.value)}/>
+                <div className="small" style={{marginTop:4}}>Recommended: {iterRec?.passes||3}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:16,alignItems:"center"}}>
+              <button onClick={()=>setStep(2)} disabled={planning}>← Reconfigure</button>
+              <button className="primary" onClick={runOptimize} disabled={planning}>
+                {planning?"Optimizing…":"Optimize →"}
+              </button>
+              {planning&&<span className="small mono" style={{marginLeft:6}}>
+                {prog.totalPasses>1?`Pass ${prog.pass}/${prog.totalPasses} · `:""}
+                {pct}% ({prog.done}/{prog.total})
+              </span>}
+            </div>
+            {planning&&(
+              <div className="progressWrap" style={{marginTop:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div className="small">
+                    {prog.totalPasses>1&&<><b>Pass {prog.pass}/{prog.totalPasses}</b> · </>}
+                    Site <b className="mono">{Math.min(prog.done+1,prog.total)}</b> / <b className="mono">{prog.total}</b>
+                    {prog.siteName?<> · <b>{prog.siteName}</b></>:null}
+                    {prog.pass>1&&prog.locked>0?<> · <b>{prog.locked}</b> locked</>:null}
+                  </div>
+                  <div className="small mono">{pct}%</div>
+                </div>
+                <div className="barOuter"><div className="barInner" style={{width:`${pct}%`}}></div></div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 4: Results ── */}
+      {step===4&&results&&(
+        <div>
+          {/* Before / after summary */}
+          {afterSummary&&(
+            <div className="summary-box">
+              <div style={{fontWeight:800,fontSize:15,marginBottom:10}}>Before → After</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+                {[
+                  {label:"T1 BCCH conflicts",before:auditResult.summary.t1,after:afterSummary.t1},
+                  {label:"T2 BCCH conflicts",before:auditResult.summary.t2,after:afterSummary.t2},
+                  {label:"BSIC conflicts",before:auditResult.summary.bsic,after:afterSummary.bsic},
+                  {label:"TCH conflicts",before:auditResult.summary.tch,after:afterSummary.tch},
+                  {label:"Any conflict",before:auditResult.summary.total,after:afterSummary.total},
+                ].map(s=>(
+                  <div key={s.label} className="stat-cell">
+                    <div style={{fontSize:18,fontWeight:800}}>
+                      <span style={{color:"#9B2020"}}>{s.before}</span>
+                      <span style={{color:"var(--color-text-tertiary)",fontWeight:400,fontSize:14}}> → </span>
+                      <span style={{color:s.after===0?"var(--color-text-success)":s.after<s.before?"var(--nokia-dark-blue)":"#9B2020"}}>{s.after}</span>
+                    </div>
+                    <div className="stat-label">{s.label}</div>
+                    {s.before>0&&<div style={{fontSize:11,color:"var(--color-text-secondary)",marginTop:2}}>
+                      {s.after===0?"fully resolved":s.after<s.before?`${s.before-s.after} resolved`:"no improvement"}
+                    </div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="card" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+            <div style={{fontWeight:1000,fontSize:15}}>{resultRows.length} sector row(s)</div>
+            <div style={{marginLeft:"auto",display:"flex",gap:10}}>
+              <button onClick={()=>setStep(3)}>← Back to Audit</button>
+              <button className="primary" onClick={()=>exportOptimizer(resultRows)}>Export XLSX ↗</button>
+            </div>
+          </div>
+
+          <div className="card" style={{overflowX:"auto",padding:0}}>
+            <table>
+              <thead>
+                <tr>{Object.keys(resultRows[0]||{}).map(h=><th key={h}>{h.replace(/_/g," ")}</th>)}</tr>
+              </thead>
+              <tbody>
+                {resultRows.map((r,i)=>(
+                  <tr key={i}>
+                    {Object.entries(r).map(([k,v])=>{
+                      const changed=String(v)==="YES";
+                      const isChangedCol=k.includes("Changed");
+                      return <td key={k} className={isChangedCol&&changed?"changed-cell mono":"mono"} style={isChangedCol&&changed?{color:"#7A4F00",fontWeight:700}:{}}>
+                        {String(v??"")}
+                      </td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="card" style={{marginTop:12}}>
+            <div style={{fontWeight:900,marginBottom:6}}>BSIC Change Types</div>
+            <div className="small">
+              <b>none</b> = no change needed / already clean &nbsp;·&nbsp;
+              <b>ncc_only</b> = only NCC changed, BCC kept &nbsp;·&nbsp;
+              <b>ncc_and_bcc</b> = both NCC and BCC changed (NCC-only was not sufficient) &nbsp;·&nbsp;
+              <b>impossible</b> = no valid (NCC,BCC) found — current values kept
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

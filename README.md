@@ -3,6 +3,7 @@
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-005AFF?style=for-the-badge&logo=github)](https://ankitnitk.github.io/new-site-planner/)
 [![2G Planner](https://img.shields.io/badge/2G-Frequency%20Planner-001E82?style=for-the-badge)](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning.html)
 [![4G Planner](https://img.shields.io/badge/4G-PCI%20%2F%20RSI%20%2F%20TAC%20Planner-00137F?style=for-the-badge)](https://ankitnitk.github.io/new-site-planner/4G-PCI-RSI-TAC%20planning.html)
+[![2G Optimizer](https://img.shields.io/badge/2G-Frequency%20Optimizer-005AFF?style=for-the-badge)](https://ankitnitk.github.io/new-site-planner/2G-Frequency-Optimizer.html)
 
 > **Single-file HTML tools for GSM and LTE radio network planning.**  
 > No installation. No server. No sign-up. Just open in a browser, upload your exports, and get a planned frequency/PCI output in seconds.
@@ -19,6 +20,7 @@
 |------|-------------|------|
 | **2G Frequency Planner** | Assigns BCCH, BSIC (NCC/BCC) and TCH frequencies for new GSM sites against an existing network | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning.html) |
 | **4G PCI / RSI / TAC Planner** | Assigns LTE PCI (with MOD3 enforcement), RSI and TAC for new eNB sites | [Open ↗](https://ankitnitk.github.io/new-site-planner/4G-PCI-RSI-TAC%20planning.html) |
+| **2G Frequency Optimizer** | Audits and optimises BCCH, BSIC and TCH plans for existing 2G sites — identifies conflicts and proposes a corrected plan | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-Frequency-Optimizer.html) |
 | **Offline 2G Planner** | Same as 2G planner but all JS bundled locally — no internet needed | [Open ↗](https://ankitnitk.github.io/new-site-planner/index_offline.html) |
 
 ---
@@ -413,9 +415,152 @@ TAC is the same for all sectors of the same new site. It is looked up from `base
 
 ---
 
+---
+
+# 2G Frequency Optimizer
+
+A single-file browser-based tool for auditing and optimising the BCCH, BSIC and TCH frequency plan of **existing** GSM sites — complementing the 2G planner which handles *new* site planning.
+
+---
+
+## How to Use
+
+1. Open `2G-Frequency-Optimizer.html` in any modern browser.
+2. **Step 1 — Load data:** upload three files:
+   - **GIS database** — one row per existing cell/sector; must contain site name, cell name, latitude, longitude, azimuth.
+   - **CM Export / Summary sheet** — one row per cell; must contain cell name, BCCH, TCH/MA list, NCC/BCC (or BSIC).
+   - **Target list** — the list of sites/cells to optimise; must contain BCF (site) name and optionally a Segment (sector) column.
+3. **Step 2 — Configure** algorithm parameters and ARFCN pools (same parameters as the 2G planner).
+4. **Step 3 — Audit:** review the current plan quality — BCCH mode, T1/T2 conflicts, BSIC separation, TCH conflicts. Set optimisation options and click Optimize.
+5. **Step 4 — Results:** compare before/after per sector, review conflict counts, export XLSX.
+
+---
+
+## Optimization Modes
+
+### Scope
+
+| Option | Behaviour |
+|--------|-----------|
+| **Fix conflicts only** | Only sites with at least one BCCH or BSIC conflict are re-planned. Conflict-free sites are left untouched. |
+| **All listed sites** | Every site in the target list is re-planned, regardless of current conflict status. |
+
+### What to change
+
+| Option | Behaviour |
+|--------|-----------|
+| **Full (BCCH + BSIC + TCH)** | Full re-plan: new BCCH, BSIC (NCC+BCC), and TCH frequencies are proposed using the same algorithm as the 2G planner. |
+| **BSIC only (NCC/BCC — NCC-first)** | Frequencies are kept unchanged. Only the BSIC (NCC + BCC) is re-assigned. Uses the NCC-first cascade (see below). |
+
+---
+
+## BSIC-Only Optimization (NCC-First Cascade)
+
+When "BSIC only" mode is selected, the optimizer re-assigns `(NCC, BCC)` for each sector without changing its BCCH or TCH frequencies. The objective is to resolve BCCH+BSIC triplet conflicts while making as conservative a change as possible.
+
+**NCC-first cascade per sector:**
+
+1. **Pass 1 — keep current BCC, change NCC only:** try each NCC value in the configured pool (random order) while holding `currentBCC` fixed. For each candidate `(NCC, currentBCC)`, test BSIC uniqueness at the configured `bsicRadius`. If the radius fails, shrink by 80% and retry (same radius-cascade logic as the planner). If any NCC succeeds: assign it, record `changeType = ncc_only`.
+
+2. **Pass 2 — last resort, allow BCC change too:** if no NCC alone resolved the conflict, try every `(NCC, BCC)` combination in the pool. If any succeeds: assign it, record `changeType = ncc_and_bcc`.
+
+3. **Impossible:** if no combination resolves the conflict at any radius, record `changeType = impossible`.
+
+**Change type legend shown in results:**
+
+| Badge | Meaning |
+|-------|---------|
+| `no change` | BSIC was already conflict-free; unchanged |
+| `NCC only` | Conflict resolved by changing NCC, BCC kept |
+| `NCC + BCC` | Conflict required changing both NCC and BCC |
+| `impossible` | No valid BSIC found at any radius |
+
+**Intra-site triplet uniqueness:** the `(BCCH, NCC, BCC)` triplet must be unique not only against other sites in the working network but also across sibling sectors of the same site. The optimizer tracks all BSIC assignments within the current site and excludes them from each subsequent sector's candidate search.
+
+---
+
+## Audit Report (Step 3)
+
+Each row in the audit table covers one sector of a target site:
+
+| Column | Description |
+|--------|-------------|
+| BCF | Site name from target list |
+| Segment | Sector identifier |
+| Az | Azimuth |
+| BCCH | Current BCCH ARFCN |
+| BCCH Mode | Badge: `clean` / `t2_reuse` / `t1_reuse` / `forced` — based on current BCCH vs. neighbour tiers |
+| T1 conflicting cells | Names of T1 neighbours sharing this BCCH |
+| BSIC Sep (km) | Nearest repeat of the (BCCH, NCC, BCC) triplet in the working network |
+| BSIC conflict | Yes/No — whether the triplet repeats within `bsicRadius` |
+| TCH conflicts | Count of TCH ARFCNs shared with any T1/T2 neighbour |
+
+**Summary row** shows total counts for: T1 BCCH conflicts, T2 BCCH conflicts, BSIC conflicts, TCH conflicts, and total conflicted sectors.
+
+**Iteration recommendation** is shown based on the coupling density of the target sites — the average number of other target sites within `searchRadius` per site:
+
+| Avg coupling | Recommended passes |
+|---|---|
+| 0 | 1 |
+| < 2 | 2 |
+| < 4 | 3 |
+| ≥ 4 | 5 |
+
+---
+
+## Multi-Pass Jacobi Iteration
+
+The optimizer uses the same Jacobi iteration strategy as the 2G planner:
+
+- **Pass 1:** sites in the target list are re-planned sequentially, each seeing all other sites' (existing and already-planned) frequencies as constraints.
+- **Passes 2..N:** each site is re-planned using all *other* target sites' assignments from the previous pass — removing order-dependency bias.
+- **Best pass kept:** scoring = `[T1 BCCH conflict count, total BCCH conflict count]` (lexicographic, lower is better). The pass with the lowest score is returned.
+- **Site locking:** a site is locked in passes 2+ when its BCCH mode is `clean` AND its BSIC triplet has no conflict AND no other target site is within `searchRadius`. Locked sites are copied from the previous pass without re-planning.
+
+For BSIC-only mode, the score is the total count of BSIC conflicts; locking requires zero BSIC conflicts and no other target site within `bsicRadius`.
+
+---
+
+## Export Format (Optimizer)
+
+The exported `freq_optimization.xlsx` contains one sheet with one row per optimised sector.
+
+| Column | Description |
+|--------|-------------|
+| BCF, Segment, Azimuth | Sector identity |
+| Old BCCH / New BCCH | Before / after BCCH ARFCN |
+| Old BCCH Mode / New BCCH Mode | Planning quality badge |
+| Old NCC, Old BCC / New NCC, New BCC | Before / after BSIC components |
+| Old BSIC / New BSIC | BSIC decimal (NCC×8 + BCC) |
+| BSIC Change Type | `no change` / `NCC only` / `NCC + BCC` / `impossible` (BSIC-only mode only) |
+| Old TCH / New TCH | Space-separated ARFCN list |
+| Old TCH Mode / New TCH Mode | TCH planning quality |
+
+Blue frozen headers; changed values are highlighted in the results table in the browser.
+
+---
+
+---
+
 ## Changelog
 
 ### 2026-05-12
+
+#### New tool: 2G Frequency Optimizer
+
+Added a new standalone tool (`2G-Frequency-Optimizer.html`) for auditing and optimising the frequency plan of existing 2G sites.
+
+**Audit mode** evaluates the current plan without changing anything: for each target sector it classifies the current BCCH mode (`clean` / `t2_reuse` / `t1_reuse` / `forced`) using the same tier-classification logic as the planner, identifies T1/T2 conflicting cells, computes the (BCCH, NCC, BCC) triplet repeat distance, flags BSIC conflicts within `bsicRadius`, and counts T1/T2 TCH conflicts.
+
+**Optimization scopes:** "Fix conflicts only" (re-plan only conflicted sites) or "All listed sites" (re-plan everything in the target list).
+
+**What-to-change options:**
+- *Full (BCCH + BSIC + TCH)* — full re-plan using the same algorithm as the 2G planner.
+- *BSIC only (NCC-first)* — keeps all frequencies; re-assigns only NCC and BCC. Uses an NCC-first cascade: first try to resolve the conflict by changing NCC alone (keeping current BCC); only change BCC as a last resort.
+
+**Multi-pass Jacobi iteration** (same strategy as both planners): pass 1 is sequential greedy; passes 2+ re-plan each unlocked site using other sites' previous-pass assignments. Best-scoring pass is kept. Iteration count is recommended automatically based on the coupling density of the target sites.
+
+**Results view:** before/after summary grid (total conflicts in original plan vs. proposed plan), per-sector comparison table with yellow highlighting for changed values, BSIC change-type legend, and XLSX export.
 
 #### 4G: Multi-pass Jacobi iteration
 
