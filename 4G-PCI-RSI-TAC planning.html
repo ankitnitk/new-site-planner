@@ -296,6 +296,18 @@ const detectNewCols = (h) => ({
   sector: findCol(h, ["sector","sec","cell","lncel","azimuth"]),
 });
 
+// Optional: a previously produced plan (sites planned but not yet integrated).
+// Column names default to this tool's own XLSX export so a prior plan can be re-fed directly.
+const detectPrevCols = (h) => ({
+  siteName: findCol(h, ["new site name","site name","sitename","lnbts","name","site"]),
+  cellName: findCol(h, ["cell name","cellname","lncel","cell"]),
+  lat: findCol(h, ["lat","latitude","y_coord","ylat","y"]),
+  lon: findCol(h, ["long","lon","lng","longitude","x_coord","xlon","x"]),
+  pci: findCol(h, ["planned pci","pci","physicalcellid","physcellid"]),
+  rsi: findCol(h, ["planned rsi","rsi","rootsequenceindex","rootsequence"]),
+  tac: findCol(h, ["planned tac","tac","trackingareacode"]),
+});
+
 /* =========================
    Geo helpers
    ========================= */
@@ -396,6 +408,23 @@ function nearestSameValueInfo(allCells, lat, lon, field, value) {
   return { cell: best.cell || "", km: Math.round(best.km*1000)/1000 };
 }
 
+// Block-aware RSI QA: nearest cell whose root block [rsi, rsi+B-1] overlaps the candidate's.
+function nearestRsiOverlapInfo(allCells, lat, lon, value, rsiBlock) {
+  if (value === null || value === undefined || isNaN(Number(value))) return { cell:"", km:"" };
+  const B = Math.max(1, Math.floor(Number(rsiBlock) || 1));
+  const v = Number(value);
+  let best=null;
+  for (const c of allCells) {
+    const cv = Number(c.rsi);
+    if (isNaN(cv) || Math.abs(cv - v) >= B) continue;
+    if (isNaN(c.lat) || isNaN(c.lon)) continue;
+    const d = haversineKm(lat, lon, c.lat, c.lon);
+    if (best===null || d < best.km) best = { cell: c.cellName || c.siteName || "", km: d };
+  }
+  if (!best) return { cell:"None (no block overlap)", km:"∞" };
+  return { cell: best.cell || "", km: Math.round(best.km*1000)/1000 };
+}
+
 function nearestUnknownRemark(baseCells, lat, lon, minReuseKm) {
   const R = Number(minReuseKm);
   if (!isFinite(R) || R <= 0) return "";
@@ -422,6 +451,10 @@ function nearestUnknownRemark(baseCells, lat, lon, minReuseKm) {
      - try at current max radius R
      - if MOD3 not possible but normal candidates exist at R, reduce radius by 10% steps down to MinReuse
      - if still not possible at MinReuse, pick normal at original R (distance > mod3 beyond MinReuse)
+   - Consecutive preference (lowest priority — never costs reuse radius or MOD3):
+     - first sector of a group prefers a base whose whole run (p..p+groupSize-1) is free at the same radius
+     - later sectors prefer extending the group's run (max+1 / min-1) among MOD3-valid candidates
+     - a consecutive run inherently has distinct mod3 classes, so this reinforces MOD3
 */
 function mod3(n){ return ((n % 3) + 3) % 3; }
 
@@ -454,10 +487,24 @@ function assignPCI({
 
   // ── Non-MOD3 path (single-sector group or first in group) ────────────────
   // Just find the highest-isolation free PCI by iterating radii from 3×min down.
+  // Consecutive preference: for the first sector of a multi-sector group, prefer a
+  // base PCI whose whole run (p, p+1, … p+groupSize-1) is free at the SAME radius,
+  // so the rest of the group can continue the run. Never trades radius for it —
+  // if no run-capable base exists at this radius, fall back to all candidates.
+  // (A consecutive run also auto-satisfies MOD3: consecutive ints have distinct mod3.)
   if (!groupNeedsMod3 || groupFirst) {
     for (const R of radii) {
       const { baseCands, usedPci } = candidatesAtRadius(R);
-      const pick = pickBestSpread(baseCands, usedPci);
+      let cands = baseCands;
+      if (groupNeedsMod3 && groupFirst) {
+        const candSet = new Set(baseCands);
+        const runBases = baseCands.filter(v => {
+          for (let k = 1; k < groupSize; k++) if (!candSet.has(v + k)) return false;
+          return true;
+        });
+        if (runBases.length) cands = runBases;
+      }
+      const pick = pickBestSpread(cands, usedPci);
       if (pick !== null) {
         return {
           value: pick,
@@ -480,6 +527,13 @@ function assignPCI({
   const usedMods = new Set(groupAssignedPcis.map(x => mod3(x)));
   let bestNormal = null; // { pick, R } — highest-isolation normal pick, saved as fallback
 
+  // Consecutive preference: if the group's PCIs so far form a run, the values that
+  // extend it (max+1 / min-1) are preferred — but only among the MOD3-valid
+  // candidates at the radius where MOD3 already succeeds. Never costs radius or MOD3.
+  const gMin = Math.min(...groupAssignedPcis), gMax = Math.max(...groupAssignedPcis);
+  const isRun = (gMax - gMin) === (groupAssignedPcis.length - 1);
+  const runExts = isRun ? [gMax + 1, gMin - 1] : [];
+
   for (const R of radii) {
     const { baseCands, usedPci } = candidatesAtRadius(R);
     if (!baseCands.length) continue;
@@ -490,9 +544,13 @@ function assignPCI({
       if (pick !== null) bestNormal = { pick, R };
     }
 
-    // Attempt MOD3 at this radius
+    // Attempt MOD3 at this radius (preferring consecutive-run extensions)
     const modCands = baseCands.filter(v => !usedMods.has(mod3(v)));
-    const pick = pickBestSpread(modCands, usedPci);
+    const modSet = new Set(modCands);
+    const consecCands = runExts.filter(v => modSet.has(v));
+    const pick = consecCands.length
+      ? pickBestSpread(consecCands, usedPci)
+      : pickBestSpread(modCands, usedPci);
     if (pick !== null) {
       const atMax = Math.abs(R - radii[0]) < 1e-9;
       return {
@@ -523,22 +581,30 @@ function assignPCI({
 }
 
 /* =========================
-   RSI assignment (unchanged rule-set)
-   - No same RSI reuse within reuse radius (existing + planned)
-   - Min RSI gap applies within whole site (across all sectors), as you specified earlier
+   RSI assignment with root-block occupancy
+   - Each cell's PRACH consumes a BLOCK of consecutive root sequences
+     (block size B depends on Ncs / cell range — configurable, default 10).
+     A cell with RSI r occupies [r, r+B-1], so two cells collide when their
+     blocks overlap, i.e. |r1 - r2| < B — not only when RSIs are equal.
+   - Hard: candidate's block must not overlap any block within reuse radius
+     (existing + planned), and must fit inside the RSI range.
+   - Intra-site: RSIs must differ by at least max(minGap, B) across all sectors.
    ========================= */
-function assignRSI({ siteAssignedRsis, allCells, siteLat, siteLon, rsiMin, rsiMax, minReuseKm, minGap }) {
-  const pool = rotatedRange(rsiMin, rsiMax);
-  // siteAssignedRsis are always hard-excluded (intra-site RSI uniqueness is a hard constraint).
-  // violatesSiteGap adds the additional proximity constraint: RSIs within same site must
-  // differ by at least minGap, not just be unique.
-  const violatesSiteGap = (v) => siteAssignedRsis.some(x => x !== null && x !== undefined && !isNaN(x) && Math.abs(v - x) < minGap);
+function assignRSI({ siteAssignedRsis, allCells, siteLat, siteLon, rsiMin, rsiMax, minReuseKm, minGap, rsiBlock }) {
+  const B = Math.max(1, Math.floor(Number(rsiBlock) || 1));
+  const hiBase = Math.max(rsiMin, rsiMax) - (B - 1);
+  const pool = rotatedRange(rsiMin, rsiMax).filter(v => v <= hiBase); // block must fit in range
+  // Intra-site: user-specified gap, but never smaller than the block size
+  // (overlapping root blocks are a physical collision even on the same site).
+  const siteGap = Math.max(Number(minGap), B);
+  const violatesSiteGap = (v) => siteAssignedRsis.some(x => x !== null && x !== undefined && !isNaN(x) && Math.abs(v - x) < siteGap);
 
   for (const R of reuseRadii(Number(minReuseKm))) {
     const nearby = allCells.filter(c => !isNaN(c.lat) && !isNaN(c.lon) && haversineKm(siteLat, siteLon, c.lat, c.lon) <= R);
     const usedRsi = nearby.map(c => Number(c.rsi)).filter(v => !isNaN(v));
-    const forbidden = new Set([...usedRsi, ...siteAssignedRsis]); // hard: external reuse + intra-site uniqueness
-    const cands = pool.filter(v => !forbidden.has(v) && !violatesSiteGap(v));
+    // Hard: block [v, v+B-1] must not overlap any nearby cell's block
+    const overlapsNearby = (v) => usedRsi.some(u => Math.abs(v - u) < B);
+    const cands = pool.filter(v => !overlapsNearby(v) && !violatesSiteGap(v));
     const pick = pickBestSpread(cands, [...usedRsi, ...siteAssignedRsis]);
     if (pick !== null) return { value: pick, reuseKm: R };
   }
@@ -588,16 +654,31 @@ function nearestSiteTac({ baseCells, siteLat, siteLon }) {
 function planSite(site, workCells, baseCells, cfg) {
   const localVcells = [];
   const rows = [];
-  const siteAssignedPcis = [];
-  const siteAssignedRsis = [];
-  const groupAssigned = [];
   const total = site.sectors.length;
   const { nearestSite, tac } = nearestSiteTac({ baseCells, siteLat: site.lat, siteLon: site.lon });
 
+  // Site expansion: if cells with this site name already exist (live network or
+  // previously planned upload), the new sectors are ADDED sectors of that site.
+  // Seed intra-site PCI/RSI state and the MOD3 groups from the existing sectors,
+  // and continue sector numbering after them (so groups of 3 stay aligned).
+  const coSite = workCells.filter(c => c.siteName === site.name);
+  const offset = coSite.length;
+  const combined = offset + total;
+  const siteAssignedPcis = coSite.map(c => Number(c.pci)).filter(v => !isNaN(v));
+  const siteAssignedRsis = coSite.map(c => Number(c.rsi)).filter(v => !isNaN(v));
+  const groupAssigned = [];
+  coSite.forEach((c, i) => {
+    const gi = Math.floor(i / 3);
+    if (!groupAssigned[gi]) groupAssigned[gi] = [];
+    const p = Number(c.pci);
+    if (!isNaN(p)) groupAssigned[gi].push(p);
+  });
+
   for (let ti = 0; ti < total; ti++) {
     const work = [...workCells, ...localVcells];
-    const groupIndex = Math.floor(ti / 3);
-    const groupSize = Math.min(3, total - groupIndex * 3);
+    const tj = ti + offset; // sector index within the whole site (existing + new)
+    const groupIndex = Math.floor(tj / 3);
+    const groupSize = Math.min(3, combined - groupIndex * 3);
     if (!groupAssigned[groupIndex]) groupAssigned[groupIndex] = [];
     const groupAssignedPcis = groupAssigned[groupIndex];
 
@@ -613,12 +694,12 @@ function planSite(site, workCells, baseCells, cfg) {
       siteAssignedRsis, allCells: work,
       siteLat: site.lat, siteLon: site.lon,
       rsiMin: cfg.rsiMin, rsiMax: cfg.rsiMax,
-      minReuseKm: cfg.minReuseKm, minGap: cfg.minRsiGap
+      minReuseKm: cfg.minReuseKm, minGap: cfg.minRsiGap, rsiBlock: cfg.rsiBlock
     });
     if (rsiRes.value !== null) siteAssignedRsis.push(rsiRes.value);
 
     const pciQA = pciRes.value !== null ? nearestSameValueInfo(work, site.lat, site.lon, "pci", pciRes.value) : { cell:"", km:"" };
-    const rsiQA = rsiRes.value !== null ? nearestSameValueInfo(work, site.lat, site.lon, "rsi", rsiRes.value) : { cell:"", km:"" };
+    const rsiQA = rsiRes.value !== null ? nearestRsiOverlapInfo(work, site.lat, site.lon, rsiRes.value, cfg.rsiBlock) : { cell:"", km:"" };
     const remark = nearestUnknownRemark(baseCells, site.lat, site.lon, cfg.minReuseKm);
 
     rows.push({
@@ -628,7 +709,7 @@ function planSite(site, workCells, baseCells, cfg) {
       "Long": site.lon,
       "Planned PCI": pciRes.value !== null ? pciRes.value : "Not possible",
       "PCI reuse distance (km)": pciRes.reuseKm !== null ? (Math.round(pciRes.reuseKm * 1000) / 1000) : "",
-      "PCI MOD3 Group": pciRes.value !== null ? pciRes.mod3Group : (Math.floor(ti/3)+1),
+      "PCI MOD3 Group": pciRes.value !== null ? pciRes.mod3Group : (Math.floor(tj/3)+1),
       "PCI MOD3 Class": pciRes.value !== null ? pciRes.mod3Class : "",
       "PCI MOD3 Status": pciRes.value !== null ? pciRes.mod3Status : "Not possible",
       "Nearest same-PCI cell (QA)": pciRes.value !== null ? pciQA.cell : "",
@@ -865,8 +946,10 @@ function App(){
   const [sumMap,setSumMap]=useState({});
   const [nsData,setNsData]=useState(null);
   const [nsMap,setNsMap]=useState({});
+  const [prevData,setPrevData]=useState(null);
+  const [prevMap,setPrevMap]=useState({});
 
-  const [cfg,setCfg]=useState({ minReuseKm:20, minRsiGap:20, pciMin:0, pciMax:503, rsiMin:0, rsiMax:837, maxPasses:3 });
+  const [cfg,setCfg]=useState({ minReuseKm:20, minRsiGap:20, rsiBlock:10, pciMin:0, pciMax:503, rsiMin:0, rsiMax:837, maxPasses:3 });
   const [results,setResults]=useState(null);
 
   const [planning,setPlanning]=useState(false);
@@ -877,6 +960,7 @@ function App(){
   const onGisLoad = (d) => { setGisData(d); setGisMap(detectGisCols(d.headers)); };
   const onSumLoad = (d) => { setSumData(d); setSumMap(detectSumCols(d.headers)); };
   const onNsLoad  = (d) => { setNsData(d);  setNsMap(detectNewCols(d.headers)); };
+  const onPrevLoad= (d) => { setPrevData(d); setPrevMap(detectPrevCols(d.headers)); };
 
   const runPlan = async () => {
     setErr(""); setResults(null);
@@ -910,17 +994,49 @@ function App(){
 
     if (!baseCells.length) { setErr("No valid rows after GIS mapping. Check column mapping."); return; }
 
+    // Optional: previously planned (not-yet-integrated) sites — fold their sectors into the
+    // base network so new sites avoid conflicting with them (reuse, MOD3, TAC lookup, remarks).
+    const parseNum = (raw) => {
+      if (raw === undefined || raw === null) return null;
+      const s = String(raw).trim();
+      if (s === "" || s.toLowerCase() === "not possible") return null;
+      const n = Number(s);
+      return isNaN(n) ? null : n;
+    };
+    let prevCells = [];
+    if (prevData && prevMap.lat && prevMap.lon) {
+      prevCells = prevData.rows.map((r, idx) => {
+        const siteName = (r[prevMap.siteName] || "").trim();
+        const lat = parseFloat(r[prevMap.lat]);
+        const lon = parseFloat(r[prevMap.lon]);
+        if (isNaN(lat) || isNaN(lon)) return null;
+        const cellName = (prevMap.cellName && (r[prevMap.cellName] || "").trim())
+          || `${siteName || "Planned"}_p${idx + 1}`;
+        return {
+          siteName: siteName || cellName,
+          cellName,
+          lat, lon,
+          pci: prevMap.pci ? parseNum(r[prevMap.pci]) : null,
+          rsi: prevMap.rsi ? parseNum(r[prevMap.rsi]) : null,
+          tac: prevMap.tac ? parseNum(r[prevMap.tac]) : null,
+        };
+      }).filter(Boolean);
+    }
+    const netCells = prevCells.length ? [...baseCells, ...prevCells] : baseCells;
+
     const plannedSites = buildPlannedSites(nsData.rows, nsMap);
     if (!plannedSites.length) { setErr("No valid rows in New Sites after mapping. Need Site + Lat + Lon."); return; }
 
     // Config sanity
     const minReuseKm = Number(cfg.minReuseKm);
     const minRsiGap  = Number(cfg.minRsiGap);
+    const rsiBlock   = Math.floor(Number(cfg.rsiBlock));
     const pciMin = Number(cfg.pciMin), pciMax = Number(cfg.pciMax);
     const rsiMin = Number(cfg.rsiMin), rsiMax = Number(cfg.rsiMax);
     const maxPasses  = Math.max(1, Math.floor(Number(cfg.maxPasses) || 1));
     if (!isFinite(minReuseKm) || minReuseKm <= 0) { setErr("Minimum reuse distance must be positive."); return; }
     if (!isFinite(minRsiGap) || minRsiGap <= 0) { setErr("Minimum RSI gap must be positive."); return; }
+    if (!isFinite(rsiBlock) || rsiBlock < 1) { setErr("RSIs consumed per cell (block size) must be a positive integer."); return; }
     if (!isFinite(pciMin) || !isFinite(pciMax) || pciMin >= pciMax) { setErr("PCI min must be less than PCI max."); return; }
     if (!isFinite(rsiMin) || !isFinite(rsiMax) || rsiMin >= rsiMax) { setErr("RSI min must be less than RSI max."); return; }
 
@@ -929,8 +1045,8 @@ function App(){
     setProg({ pass:1, totalPasses:maxPasses, done:0, total:totalSectors, siteName:plannedSites[0]?.name||"", locked:0 });
 
     try{
-      const out = await planAllAsync(plannedSites, baseCells, {
-        minReuseKm, minRsiGap, pciMin, pciMax, rsiMin, rsiMax, maxPasses
+      const out = await planAllAsync(plannedSites, netCells, {
+        minReuseKm, minRsiGap, rsiBlock, pciMin, pciMax, rsiMin, rsiMax, maxPasses
       }, (p) => setProg({ pass:p.pass||1, totalPasses:p.totalPasses||1, done:p.done||0, total:p.total||0, siteName:p.siteName||"", locked:p.locked||0 }));
       setResults(out);
       setStep(3);
@@ -950,6 +1066,7 @@ function App(){
             <div className="small" style={{marginTop:6}}>
               <b>PCI MOD3</b> is enforced in groups of 3 sectors (1–3, 4–6, 7–9…). If MOD3 fails at max radius but normal PCI exists,
               the planner reduces radius by 10% steps down to <b>MinReuse</b> to try satisfy MOD3; below MinReuse, distance wins.
+              Within a group, <b>consecutive PCIs</b> (n, n+1, n+2) are preferred when available without sacrificing reuse distance or MOD3.
             </div>
           </div>
           <Steps current={step} />
@@ -986,6 +1103,16 @@ function App(){
             </div>
           </div>
 
+          <div className="row" style={{marginTop:4}}>
+            <div className="col" style={{minWidth:"100%"}}>
+              <FileBlock title="4) Previously planned sites — not yet integrated (optional)"
+                hint="Optional. Sites already planned but not live yet, so new sites avoid conflicting with them. You can re-upload a plan exported by this tool. Required cols: Site name, Latitude, Longitude, PCI, RSI (TAC optional)."
+                onLoad={onPrevLoad}/>
+              {prevData && <ColMapper headers={prevData.headers} mapping={prevMap} onChange={setPrevMap}
+                fields={{ siteName:"Site name", cellName:"Cell name (optional)", lat:"Latitude *", lon:"Longitude *", pci:"PCI", rsi:"RSI", tac:"TAC (optional)" }} />}
+            </div>
+          </div>
+
           <div style={{display:"flex", gap:10, alignItems:"center", marginTop:8}}>
             <button className="primary" disabled={!canContinue} onClick={() => {
               if (!canContinue) setErr("Upload all 3 files first.");
@@ -1009,6 +1136,11 @@ function App(){
             <div>
               <div className="label">Minimum RSI gap (within same site)</div>
               <input className="mono" value={cfg.minRsiGap} onChange={e => setCfg(c => ({...c, minRsiGap: e.target.value}))} />
+            </div>
+            <div>
+              <div className="label">RSIs consumed per cell (root block size)</div>
+              <input className="mono" value={cfg.rsiBlock} onChange={e => setCfg(c => ({...c, rsiBlock: e.target.value}))} />
+              <div className="small" style={{marginTop:4}}>Each cell's PRACH occupies this many consecutive RSIs (depends on Ncs / cell range; 10 covers large cells). Blocks overlapping any nearby cell's block are rejected, not just equal RSIs. Set 1 for old exact-match behavior.</div>
             </div>
           </div>
 
