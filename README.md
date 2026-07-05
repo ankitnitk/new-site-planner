@@ -286,10 +286,11 @@ A single-file browser-based tool for planning LTE Physical Cell ID (PCI), Root S
 ## How to Use
 
 1. Open `4G-PCI-RSI-TAC planning.html` in any modern browser.
-2. **Step 1 — Load data:** upload three files:
+2. **Step 1 — Load data:** upload three required files (plus one optional):
    - **Current network GIS** — one row per existing cell/sector; must contain site name (LNBTS), cell name (LNCEL), latitude, longitude.
    - **4G Summary sheet** — one row per cell; must contain LNCEL, PCI, RSI, TAC. The planner auto-selects the sheet named "LNCEL Details" if present.
    - **New Sites file** — one row per sector to plan; must contain site name, latitude, longitude. Sector label column is optional.
+   - **Previously planned sites (optional)** — sites already planned but not yet integrated in the network. A plan exported by this tool can be re-uploaded directly (column names auto-detected). These sites participate in **all** collision logic — PCI/RSI reuse distance, MOD3 spread, TAC lookup, QA columns and remarks — exactly like live cells.
 3. **Step 2 — Configure** planning parameters.
 4. **Step 3 — Plan** and review results. Export to Excel.
 
@@ -302,7 +303,8 @@ A single-file browser-based tool for planning LTE Physical Cell ID (PCI), Root S
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | Min reuse distance (km) | 20 | > 0 | Minimum separation between cells assigned the same PCI or RSI. The planner starts at 3× this value and steps down by 10% increments. |
-| Min RSI gap (within site) | 20 | > 0 | RSI values assigned to sectors of the same site must differ by at least this amount (on top of being unique). |
+| Min RSI gap (within site) | 20 | > 0 | RSI values assigned to sectors of the same site must differ by at least this amount (on top of being unique). Effective gap is never smaller than the root block size below. |
+| RSIs consumed per cell (root block size) | 10 | ≥ 1 | Each cell's PRACH occupies this many **consecutive** RSIs (depends on Ncs / cell range). Candidates whose block overlaps any nearby cell's block are rejected — not just equal RSIs. Set 1 for legacy exact-match behaviour. |
 | PCI min / max | 0 / 503 | 0–503 | Allowed PCI pool. LTE specifies 504 PCIs (0–503). Restrict to a sub-range to limit planned site PCIs to an operator-reserved block. |
 | RSI min / max | 0 / 837 | 0–837 | Allowed RSI pool. LTE Zadoff-Chu root sequence indices are 0–837. |
 | Planning passes | 3 | ≥ 1 | Number of multi-pass Jacobi iterations (see Technical Notes). Pass 1 = sequential greedy; passes 2+ re-plan each unlocked site using all other sites' previous-pass assignments. |
@@ -341,6 +343,18 @@ For each sector (in site-sequential order):
 | `Fallback (mod3 not possible)` | No MOD3-compliant PCI found at any radius ≥ minReuse; best normal PCI assigned |
 | `Not possible` | No free PCI exists at any radius (pool exhausted) |
 
+### Consecutive PCI preference
+
+Where possible without any cost, sectors of a group receive **consecutive PCIs** (n, n+1, n+2) — the operationally familiar pattern, which also inherently satisfies MOD3 (consecutive integers always have distinct mod3 classes).
+
+- **First sector of a group** prefers a base PCI whose whole run (p … p+groupSize−1) is collision-free *at the same radius* — so the rest of the group can continue the run.
+- **Subsequent sectors** prefer extending the group's run (max+1 / min−1), but only among the MOD3-valid candidates at the radius where MOD3 already succeeds.
+- The preference is strictly the **lowest priority**: it never reduces reuse distance, never breaks MOD3, and silently degrades to spread-out picks in dense areas.
+
+### Site expansion (adding sectors to an existing site)
+
+If a planned site's name matches cells already present in the working network (live GIS or the previously-planned upload), the new sectors are treated as **added** sectors of that site: intra-site PCI uniqueness and the RSI gap are seeded from the live sectors, MOD3 groups continue from the existing sector count (e.g. a site with 2 live sectors + 1 new → the new sector completes group 1 and takes the missing mod3 class), and a single live sector's PCI makes p±1 the preferred consecutive candidates. Name matching is exact (case-sensitive).
+
 ### Spread scoring and tie-breaking
 
 When multiple candidates are valid, the planner picks the one with the **largest minimum distance** to any already-used PCI in the candidate set — maximising spectral separation. Ties are broken uniformly at random using reservoir sampling (`seen++; if (Math.random() < 1/seen) choose current`), so every equally good candidate has equal probability.
@@ -351,20 +365,22 @@ When multiple candidates are valid, the planner picks the one with the **largest
 
 RSI (Root Sequence Index) is used by the LTE PRACH (random access channel). Sectors with the same RSI within a close range cause PRACH ambiguity.
 
+### Root block occupancy
+
+PRACH root sequences are consumed in **blocks**: each cell needs 64 preambles, and with a given Ncs each root yields only a few, so one cell typically occupies ~10 consecutive RSIs. A cell with RSI `r` therefore occupies the block `[r, r+B−1]` (B = configurable block size, default 10). Two cells **collide when their blocks overlap** — `|r1 − r2| < B` — not only when their RSIs are equal. An RSI of `nearby+1` is a real PRACH collision and is rejected.
+
 ### Constraints
 
-- **Intra-site uniqueness:** sectors of the same site can never share an RSI (hard constraint).
-- **Intra-site gap:** RSI values within the same site must differ by at least `minRsiGap`. This prevents Zadoff-Chu root sequences that are close in index from producing nearly-identical preamble sets.
-- **Reuse distance:** no RSI may be reused within the same radius cascade used for PCI (`3 × minReuseKm` → `0.1 × minReuseKm`).
+- **Block overlap (hard):** a candidate's block `[v, v+B−1]` may not overlap any cell's block within the reuse radius (existing + planned). With B = 1 this reduces to the legacy exact-match rule.
+- **Range fit:** the whole block must fit inside the configured RSI range (e.g. 0–837 with B = 10 → candidate bases 0–828).
+- **Intra-site gap:** RSI values within the same site must differ by at least `max(minRsiGap, B)` — overlapping root blocks are a physical collision even on the same eNB.
+- **Reuse distance:** the same radius cascade as PCI (`3 × minReuseKm` → `0.1 × minReuseKm`).
 
 ### Assignment
 
-The pool is `rotatedRange(rsiMin, rsiMax)`. For each radius R (same cascade as PCI), the planner filters out:
-1. RSIs used by any cell within R km (existing or planned).
-2. RSIs already assigned to other sectors of the same site.
-3. RSIs that would violate the intra-site `minRsiGap`.
+The pool is `rotatedRange(rsiMin, rsiMax)` clipped so blocks fit the range. For each radius R (same cascade as PCI), the planner filters out candidates whose block overlaps any nearby cell's block, and candidates violating the intra-site gap. The first radius where a valid candidate exists is used. Spread scoring with reservoir-sampling tie-break applies (same as PCI).
 
-The first radius where a valid candidate exists is used. Spread scoring with reservoir-sampling tie-break applies (same as PCI).
+The QA column reports the nearest **block-overlapping** cell, not just the nearest equal-RSI cell — so QA cannot say "unique" while a real overlap exists at RSI±(B−1).
 
 ---
 
@@ -374,7 +390,7 @@ Tracking Area Code (TAC) defines the tracking area — a grouping of cells for U
 
 **Rule:** each new site inherits the TAC of its **nearest existing site** (by haversine distance to site centroid). If the nearest existing site has multiple TAC values (mixed cells), the most frequent TAC is used; ties are broken by smallest TAC value.
 
-TAC is the same for all sectors of the same new site. It is looked up from `baseCells` (existing network) only — other planned-but-not-yet-existing sites do not influence each other's TAC.
+TAC is the same for all sectors of the same new site. It is looked up from the working network — the existing GIS plus, if uploaded, the **previously planned (not yet integrated)** sites. Sites planned in the *same run* do not influence each other's TAC.
 
 ---
 
@@ -394,8 +410,8 @@ TAC is the same for all sectors of the same new site. It is looked up from `base
 | Same-PCI distance (km) (QA) | Distance to that cell; `∞` if the PCI is globally unique |
 | Planned RSI | Assigned RSI, or `Not possible` if pool exhausted |
 | RSI reuse distance (km) | Actual reuse radius used for this RSI assignment |
-| Nearest same-RSI cell (QA) | Cell name of the nearest cell with the same RSI |
-| Same-RSI distance (km) (QA) | Distance to that cell; `∞` if globally unique |
+| Nearest same-RSI cell (QA) | Cell name of the nearest cell whose RSI **block overlaps** this one (`|ΔRSI| < block size`) |
+| Same-RSI distance (km) (QA) | Distance to that cell; `∞` if no block overlap exists anywhere |
 | Planned TAC | Inherited TAC from nearest existing site |
 | Nearest Site Name | Name of the existing site whose TAC was inherited |
 | Remark | Warning if any existing site within MinReuse has unknown PCI or RSI (may affect planning quality) |
@@ -442,40 +458,63 @@ A single-file browser-based tool for auditing and optimising the BCCH, BSIC and 
 
 | Option | Behaviour |
 |--------|-----------|
-| **Fix conflicts only** | Only sites with at least one BCCH or BSIC conflict are re-planned. Conflict-free sites are left untouched. |
-| **All listed sites** | Every site in the target list is re-planned, regardless of current conflict status. |
+| **Fix conflicts only** | Only **sectors** with at least one conflict are movable. Everything else — including clean sectors of a conflicted site — stays exactly as it is and acts as fixed context. Minimal change by construction. |
+| **All listed sites** | Every sector in the target list is movable. The solver still only changes what pays for itself (see change aversion below). |
 
 ### What to change
 
 | Option | Behaviour |
 |--------|-----------|
-| **Full (BCCH + BSIC + TCH)** | Full re-plan: new BCCH, BSIC (NCC+BCC), and TCH frequencies are proposed using the same algorithm as the 2G planner. |
-| **BSIC only (NCC/BCC — NCC-first)** | Frequencies are kept unchanged. Only the BSIC (NCC + BCC) is re-assigned. Uses the NCC-first cascade (see below). |
+| **Full (BCCH + BSIC + TCH)** | Runs the interference-graph solver: BCCH phase, then TCH phase, then BSIC phase. |
+| **BSIC only (NCC/BCC — NCC-first)** | Frequencies are kept unchanged. Only the BSIC (NCC + BCC) is re-assigned, NCC-first. |
 
 ---
 
-## BSIC-Only Optimization (NCC-First Cascade)
+## Optimization Engine
 
-When "BSIC only" mode is selected, the optimizer re-assigns `(NCC, BCC)` for each sector without changing its BCCH or TCH frequencies. The objective is to resolve BCCH+BSIC triplet conflicts while making as conservative a change as possible.
+The optimizer treats frequency optimization as what it is — a **weighted graph problem solved by min-conflicts local search** (the standard AFP approach) — rather than re-planning sites from scratch.
 
-**NCC-first cascade per sector:**
+### 1. Interference graph (built once)
 
-1. **Pass 1 — keep current BCC, change NCC only:** try each NCC value in the configured pool (random order) while holding `currentBCC` fixed. For each candidate `(NCC, currentBCC)`, test BSIC uniqueness at the configured `bsicRadius`. If the radius fails, shrink by 80% and retry (same radius-cascade logic as the planner). If any NCC succeeds: assign it, record `changeType = ncc_only`.
+For every movable sector, every network cell within `searchRadius` is classified into tiers using the same directional geometry as the audit (`classifyTiers` — azimuth, beam width, overlap, shadowing) and stored as a weighted edge:
 
-2. **Pass 2 — last resort, allow BCC change too:** if no NCC alone resolved the conflict, try every `(NCC, BCC)` combination in the pool. If any succeeds: assign it, record `changeType = ncc_and_bcc`.
+| Edge type | Weight |
+|-----------|--------|
+| Tier-1 neighbour | 10 |
+| Tier-2 neighbour | 1 |
+| Tier-3 neighbour | 0.15 |
+| Co-site sibling (same site) | near-hard: 100 (BCCH co-channel), 30 (BCCH adjacent), 50/15 (TCH exact/adjacent) |
 
-3. **Impossible:** if no combination resolves the conflict at any radius, record `changeType = impossible`.
+### 2. Cost function
 
-**Change type legend shown in results:**
+Total cost = Σ over edges of the pairwise penalty × tier weight, plus a **change-aversion term** (λ ≈ 0.3 per changed BCCH, 0.2 per changed TCH plan) so zero-benefit churn never happens. The pairwise penalty is graded:
 
-| Badge | Meaning |
-|-------|---------|
-| `no change` | BSIC was already conflict-free; unchanged |
-| `NCC only` | Conflict resolved by changing NCC, BCC kept |
-| `NCC + BCC` | Conflict required changing both NCC and BCC |
-| `impossible` | No valid BSIC found at any radius |
+| Interaction | Co-channel | Adjacent (±1) |
+|-------------|-----------|----------------|
+| BCCH ↔ BCCH | 1.0 × w | 0.3 × w |
+| BCCH ↔ TCH | 0.6 × w | 0.2 × w |
+| TCH ↔ TCH | 0.4 × w | 0.1 × w |
 
-**Intra-site triplet uniqueness:** the `(BCCH, NCC, BCC)` triplet must be unique not only against other sites in the working network but also across sibling sectors of the same site. The optimizer tracks all BSIC assignments within the current site and excludes them from each subsequent sector's candidate search.
+### 3. BCCH phase — min-conflicts coordinate descent
+
+Repeatedly: take the cell contributing the most conflict cost, evaluate every candidate BCCH from its band pool (delta-evaluated over only that cell's edges — cheap), and apply the best **strictly improving** move. Repeat until no move improves. Perturbation kicks then force still-conflicted cells to their least-bad alternative and re-descend — each kick is **rolled back unless the total actually improved**.
+
+Because only improving moves are ever kept, **the optimizer can never make the plan worse** — worst case, it changes nothing.
+
+### 4. TCH phase
+
+For each movable sector (worst first), a greedy cost-based rebuild: slot-by-slot pick of the pool channel minimising the cell's local cost, respecting intra-sector separation ≥ 2 and clearance ≥ 2 from the sector's own BCCH. The rebuilt list is accepted only if it lowers total cost; otherwise the current list is kept.
+
+### 5. BSIC phase — NCC-first
+
+For each movable sector (with its final BCCH), candidates are tried in order: **keep current → NCC-only change → BCC-only change → both**, choosing the first that achieves a same-`(BCCH, NCC, BCC)` repeat distance ≥ `bsicRadius`; if none exists, the maximum-separation pair is taken. Sequential assignment means movable cells see each other's decisions.
+
+### Properties
+
+- **Deterministic** — no randomness anywhere; the same inputs always produce the same result.
+- **Monotonic** — only strictly improving changes are applied.
+- **Minimal-change** — untouched sectors stay exactly as they are; the λ term suppresses cosmetic swaps.
+- **Fast** — delta evaluation touches only a cell's own edges instead of re-planning whole sites.
 
 ---
 
@@ -489,52 +528,41 @@ Each row in the audit table covers one sector of a target site:
 | Segment | Sector identifier |
 | Az | Azimuth |
 | BCCH | Current BCCH ARFCN |
-| BCCH Mode | Badge: `clean` / `t2_reuse` / `t1_reuse` / `forced` — based on current BCCH vs. neighbour tiers |
-| T1 conflicting cells | Names of T1 neighbours sharing this BCCH |
+| BCCH Mode | Badge: `clean` / `t2_reuse` / `t1_reuse` — based on current BCCH vs. neighbour tiers |
+| Co-site BCCH | `EXACT` / `ADJ ±1` flag against sibling sectors |
+| T1 conflicting cells | Names of T1/T2 neighbours sharing this BCCH |
 | BSIC Sep (km) | Nearest repeat of the (BCCH, NCC, BCC) triplet in the working network |
 | BSIC conflict | Yes/No — whether the triplet repeats within `bsicRadius` |
-| TCH conflicts | Count of TCH ARFCNs shared with any T1/T2 neighbour |
+| TCH conflicts | TCH ARFCNs co-channel with a **Tier-1/Tier-2** neighbour's TCH or BCCH (tier-weighted — distant low-overlap cells no longer count) |
 
-**Summary row** shows total counts for: T1 BCCH conflicts, T2 BCCH conflicts, BSIC conflicts, TCH conflicts, and total conflicted sectors.
-
-**Iteration recommendation** is shown based on the coupling density of the target sites — the average number of other target sites within `searchRadius` per site:
-
-| Avg coupling | Recommended passes |
-|---|---|
-| 0 | 1 |
-| < 2 | 2 |
-| < 4 | 3 |
-| ≥ 4 | 5 |
+**Summary row** shows total counts for: co-site BCCH conflicts, T1 BCCH conflicts, T2 BCCH conflicts, BSIC conflicts, TCH conflicts, and total conflicted sectors.
 
 ---
 
-## Multi-Pass Jacobi Iteration
+## Ranked Change List (Step 4)
 
-The optimizer uses the same Jacobi iteration strategy as the 2G planner:
+The killer feature of the results view: every sector row carries **Conflict Weight Removed** — the interference weight its changes eliminate, on the same scale as the graph (a T1 co-channel fix ≈ 10, a T2 fix ≈ 1, adjacent-channel and TCH terms scaled accordingly; a resolved BSIC conflict adds 5).
 
-- **Pass 1:** sites in the target list are re-planned sequentially, each seeing all other sites' (existing and already-planned) frequencies as constraints.
-- **Passes 2..N:** each site is re-planned using all *other* target sites' assignments from the previous pass — removing order-dependency bias.
-- **Best pass kept:** scoring = `[T1 BCCH conflict count, total BCCH conflict count]` (lexicographic, lower is better). The pass with the lowest score is returned.
-- **Site locking:** a site is locked in passes 2+ when its BCCH mode is `clean` AND its BSIC triplet has no conflict AND no other target site is within `searchRadius`. Locked sites are copied from the previous pass without re-planning.
+Rows are **sorted by benefit, descending**. The intended workflow: apply changes from the top, stop when the benefit becomes negligible. Sectors showing 0 were already clean or could not be improved.
 
-For BSIC-only mode, the score is the total count of BSIC conflicts; locking requires zero BSIC conflicts and no other target site within `bsicRadius`.
+A before/after summary grid compares conflict counts of the original vs. proposed plan, computed by the same independent audit in both cases.
 
 ---
 
 ## Export Format (Optimizer)
 
-The exported `freq_optimization.xlsx` contains one sheet with one row per optimised sector.
+The exported `2g_optimizer_results.xlsx` contains one sheet with one row per target sector, sorted by benefit.
 
 | Column | Description |
 |--------|-------------|
 | BCF, Segment, Azimuth | Sector identity |
-| Old BCCH / New BCCH | Before / after BCCH ARFCN |
-| Old BCCH Mode / New BCCH Mode | Planning quality badge |
-| Old NCC, Old BCC / New NCC, New BCC | Before / after BSIC components |
-| Old BSIC / New BSIC | BSIC decimal (NCC×8 + BCC) |
-| BSIC Change Type | `no change` / `NCC only` / `NCC + BCC` / `impossible` (BSIC-only mode only) |
-| Old TCH / New TCH | Space-separated ARFCN list |
-| Old TCH Mode / New TCH Mode | TCH planning quality |
+| Old_BCCH / New_BCCH, BCCH_Changed | Before / after BCCH ARFCN |
+| Old_TCH / New_TCH, TCH_Changed | Space-separated ARFCN lists |
+| Old_BSIC / New_BSIC, BSIC_Changed | `NCC/BCC` before / after |
+| BSIC_Change_Type | `none` / `ncc_only` / `bcc_only` / `ncc_and_bcc` / `impossible` / `no_bcch` |
+| Old_BCCH_Mode / New_BCCH_Mode | Audit badge before / after |
+| Old_BSIC_Sep_km / New_BSIC_Sep_km | Same-triplet repeat distance before / after (`∞` = unique) |
+| Conflict_Weight_Removed | Interference weight eliminated by this sector's changes — apply from the top |
 
 Blue frozen headers; changed values are highlighted in the results table in the browser.
 
@@ -543,6 +571,31 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 ---
 
 ## Changelog
+
+### 2026-07-05
+
+#### 2G Frequency Optimizer — complete engine rewrite (interference graph + min-conflicts)
+
+The optimizer core was replaced. The previous approach re-planned each site from scratch (greedy per-sector planner + multi-pass Jacobi iteration), which oscillated on coupled sites, churned frequencies that didn't need to change, and could produce plans worse than the original (it had an explicit revert fallback for that case). The new engine solves the actual AFP problem:
+
+- **Interference graph built once** — weighted edges per movable sector from the audit's own tier geometry (T1 = 10, T2 = 1, T3 = 0.15; co-site near-hard).
+- **Graded cost function** — co-channel *and adjacent-channel* penalties for BCCH↔BCCH, BCCH↔TCH and TCH↔TCH, plus a change-aversion λ per touched sector.
+- **Min-conflicts coordinate descent** for BCCH with rollback-protected perturbation kicks; cost-driven greedy TCH rebuild; NCC-first BSIC phase (keep → NCC-only → BCC-only → both).
+- **Monotonic** — only strictly improving moves are applied; the optimizer can no longer degrade a plan, so the revert fallback is gone.
+- **Deterministic** — all randomness removed; identical inputs give identical output.
+- **Minimal-change & per-sector scope** — "Fix conflicts only" now moves only conflicted *sectors* (previously whole sites); untouched sectors stay exactly as they are.
+- **Ranked change list** — results carry `Conflict_Weight_Removed` and are sorted by it: apply from the top, stop when returns diminish.
+- **Audit fix: TCH conflict overcounting** — TCH conflicts now count only co-channel hits against Tier-1/Tier-2 neighbours' TCH/BCCH instead of every cell in the whole search radius.
+- Removed: planning-passes input and iteration recommendation (meaningless for a convergent solver).
+
+#### 4G planner: not-yet-integrated sites, consecutive PCI, RSI root blocks, site expansion
+
+- **Previously planned sites input (optional 4th file):** sites planned but not yet on air can be uploaded (a prior export re-feeds directly) and participate in all collision logic — PCI/RSI reuse, MOD3, TAC lookup, QA and remarks.
+- **Consecutive PCI preference:** groups get n, n+1, n+2 where available at the same radius — never at the cost of reuse distance or MOD3 (a consecutive run inherently satisfies MOD3).
+- **RSI root-block occupancy:** each cell's PRACH occupies a configurable block of consecutive RSIs (default 10); candidates with **overlapping blocks** are rejected, not just equal RSIs — closing a real PRACH collision gap. Intra-site gap floors at the block size; the QA column reports the nearest block-overlapping cell.
+- **Site expansion:** new sectors added to an existing site (name match) seed intra-site PCI/RSI state and MOD3 groups from the live co-site sectors, and continue sector numbering after them.
+
+---
 
 ### 2026-05-12
 

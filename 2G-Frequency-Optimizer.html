@@ -230,82 +230,6 @@ function parseTCHList(str) {
 // Standard GSM ARFCN band classification (independent of configured pools)
 const isArfcn900  = n => (n >= 0   && n <= 124)  || (n >= 975 && n <= 1023);
 const isArfcn1800 = n =>  n >= 512 && n <= 885;
-function shuffle(arr) {
-  const a=[...arr];
-  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
-  return a;
-}
-const getBcchPool = bd => parseARFCNList(bd?.bcchStr||"");
-const getTchPool  = bd => parseARFCNList(bd?.tchStr||"");
-
-// ── Optimal TCH selection (reservoir sampling) ────────────────────────────────
-function optimalTCHSelect(pool, count, minSep) {
-  const sorted=[...new Set(pool)].sort((a,b)=>a-b);
-  if(!sorted.length||!count) return [];
-  let cn=1; for(let i=0;i<count;i++) cn=cn*(sorted.length-i)/(i+1);
-  if(cn>60000) return spreadSelect(pool,count,minSep);
-  let chosen=null,seen=0;
-  function search(start,sel){
-    if(sel.length===count){seen++;if(Math.random()<1/seen)chosen=[...sel];return;}
-    if(sorted.length-start<count-sel.length) return;
-    for(let i=start;i<sorted.length;i++){
-      if(sel.length>0&&sorted[i]-sel[sel.length-1]<minSep) continue;
-      search(i+1,[...sel,sorted[i]]);
-    }
-  }
-  search(0,[]);
-  return chosen??[];
-}
-function spreadSelect(pool,count,minSep=1) {
-  if(!pool.length) return [];
-  const eligible=(a,sel)=>!sel.includes(a)&&sel.every(s=>Math.abs(a-s)>=minSep);
-  const randomStart=Math.floor(Math.random()*pool.length);
-  const rotated=[...pool.slice(randomStart),...pool.slice(0,randomStart)];
-  const firstEligible=rotated.find(a=>eligible(a,[]))??pool[0];
-  const sel=[firstEligible];
-  while(sel.length<count){
-    let best=null,bd=-1;
-    for(const a of pool){if(!eligible(a,sel))continue;const d=Math.min(...sel.map(s=>Math.abs(a-s)));if(d>bd){bd=d;best=a;}}
-    if(best!==null)sel.push(best);else break;
-  }
-  return sel.sort((a,b)=>a-b);
-}
-
-// ── TCH planner ───────────────────────────────────────────────────────────────
-function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTCH) {
-  sameSectorTCH=sameSectorTCH||[];
-  if(!count||!tchPool.length) return {list:[],mode:"n/a"};
-  if(sameSectorTCH.length){
-    const ex=new Set(); sameSectorTCH.forEach(t=>{ex.add(t-1);ex.add(t);ex.add(t+1);});
-    tchPool=tchPool.filter(a=>!ex.has(a));
-    if(!tchPool.length) return {list:[],mode:"impossible"};
-  }
-  tchPool=shuffle(tchPool); const tchPoolSet=new Set(tchPool);
-  const inSiteBCCHAdj=new Set(inSiteBCCHSet); inSiteBCCHSet.forEach(b=>{inSiteBCCHAdj.add(b-1);inSiteBCCHAdj.add(b+1);});
-  const nbTCH=new Set(); scored.forEach(c=>(c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n))nbTCH.add(n);}));
-  const otherSectorTCH=new Set(siteRegTCH);
-  const hardForbid=new Set([...nbTCH,...inSiteBCCHAdj,...otherSectorTCH]);
-  const otherSectorAdj=new Set(); siteRegTCH.forEach(t=>{otherSectorAdj.add(t-1);otherSectorAdj.add(t+1);});
-  const poolA=[],poolB=[];
-  for(const a of tchPool){if(hardForbid.has(a))continue;if(!otherSectorAdj.has(a))poolA.push(a);poolB.push(a);}
-  const poolC=tchPool.filter(a=>!inSiteBCCHAdj.has(a)&&!otherSectorTCH.has(a)&&!otherSectorAdj.has(a));
-  const poolD=tchPool.filter(a=>!inSiteBCCHAdj.has(a)&&!otherSectorTCH.has(a));
-  const poolE=tchPool.filter(a=>!inSiteBCCHAdj.has(a)&&!otherSectorAdj.has(a));
-  const poolF=tchPool.filter(a=>!inSiteBCCHAdj.has(a));
-  let list=[],mode="clean";
-  list=optimalTCHSelect(poolA,count,2);
-  if(list.length>=count){mode="clean";}
-  else{
-    const lB=optimalTCHSelect(poolB,count,2);if(lB.length>=list.length){list=lB;mode=lB.length>=count?"site_adj":"partial";}
-    if(list.length<count){const lC=optimalTCHSelect(poolC,count,2);if(lC.length>list.length){list=lC;mode=lC.length>=count?"nb_reuse":"partial";}}
-    if(list.length<count){const lD=optimalTCHSelect(poolD,count,2);if(lD.length>list.length){list=lD;mode=lD.length>=count?"nb_reuse_adj":"partial";}}
-    if(list.length<count){const lE=optimalTCHSelect(poolE,count,2);if(lE.length>list.length){list=lE;mode=lE.length>=count?"site_reuse":"partial";}}
-    if(list.length<count){const lF=spreadSelect(poolF,count,2);if(lF.length>list.length){list=lF;mode="reuse";}}
-  }
-  list.forEach(t=>siteRegTCH.push(t));
-  return {list,mode};
-}
-
 // ── Cell overlap ──────────────────────────────────────────────────────────────
 function cellOverlap(la1,lo1,az1,la2,lo2,az2,bw) {
   const dist=haversineKm(la1,lo1,la2,lo2);
@@ -314,7 +238,7 @@ function cellOverlap(la1,lo1,az1,la2,lo2,az2,bw) {
   return {fwdS:Math.max(0,1-angleDiff(bear,az1)/bw),revS:Math.max(0,1-angleDiff((bear+180)%360,az2)/bw)};
 }
 
-// ── Tier classification helper (shared by planOneSite and auditOneSite) ───────
+// ── Tier classification helper (shared by the audit and the optimizer graph) ──
 function classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth) {
   const OVL=0.05,BRIDGE_REV=0.40;
   const hasDirectOverlap=c=>{
@@ -375,214 +299,259 @@ function classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth) 
   return {effectiveTier1,effectiveTier2,effectiveTier3,demotedNames,upgradedNames,shadowedNames};
 }
 
-// ── planOneSite (verbatim from 2G planner) ────────────────────────────────────
-function planOneSite(site,workingCells,cfg) {
-  const {lat,lon,sectors}=site;
-  const {firstTierRadius,nccStr,bands,beamWidth}=cfg;
-  const nccPool=parseARFCNList(nccStr||"0-7").filter(n=>n>=0&&n<=7);
-  const band900=bands[0],band1800=bands[1];
-  const allBand900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
-  const allBand1800=new Set(band1800?[...getBcchPool(band1800),...getTchPool(band1800)]:[]);
-  const siteReg={bcch:[],tch900:[],tch1800:[]};
-  workingCells.forEach(c=>{
-    if(isNaN(c.lat)||isNaN(c.lon)) return;
-    if(haversineKm(lat,lon,c.lat,c.lon)>=0.05) return;
-    const b=Number(c.bcch);if(!isNaN(b))siteReg.bcch.push(b);
-    (c.tchList||[]).forEach(t=>{const n=Number(t);if(isNaN(n))return;if(allBand1800.has(n))siteReg.tch1800.push(n);else siteReg.tch900.push(n);});
-  });
-  const lrbKey=c=>`${c.lac}|${c.rac}|${c.bsc}`;
-  const majorityVote=cands=>{
-    if(!cands.length) return {lac:null,rac:null,bsc:null};
-    const tally=new Map();
-    cands.forEach(c=>{const k=lrbKey(c);if(!tally.has(k))tally.set(k,{count:0,dist:c.dist||0,c});const v=tally.get(k);v.count++;if((c.dist||0)<v.dist){v.dist=c.dist||0;v.c=c;}});
-    const best=[...tally.values()].sort((a,b)=>b.count-a.count||a.dist-b.dist)[0];
-    return {lac:best.c.lac,rac:best.c.rac,bsc:best.c.bsc};
-  };
-  const siteLacRacBsc=(()=>{
-    const coSite=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&haversineKm(lat,lon,c.lat,c.lon)<0.05&&(c.lac!=null||c.rac!=null||c.bsc!=null));
-    if(coSite.length) return majorityVote(coSite);
-    const OVL_LRB=0.05; const pooled=[];
-    sectors.forEach(sec=>{
-      const az=parseFloat(sec.azimuth)||0;
-      workingCells.forEach(c=>{
-        if(isNaN(c.lat)||isNaN(c.lon)) return;
-        if(c.lac==null&&c.rac==null&&c.bsc==null) return;
-        const dist=haversineKm(lat,lon,c.lat,c.lon);
-        if(dist<0.05||dist>firstTierRadius) return;
-        const bear=compassBearing(lat,lon,c.lat,c.lon);
-        const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
-        const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
-        if(fwdS>OVL_LRB||revS>OVL_LRB) pooled.push({...c,dist});
-      });
-    });
-    if(pooled.length) return majorityVote(pooled);
-    const nearest=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&haversineKm(lat,lon,c.lat,c.lon)>=0.05&&(c.lac!=null||c.rac!=null||c.bsc!=null)).map(c=>({...c,dist:haversineKm(lat,lon,c.lat,c.lon)})).sort((a,b)=>a.dist-b.dist);
-    if(nearest.length) return {lac:nearest[0].lac,rac:nearest[0].rac,bsc:nearest[0].bsc};
-    return {lac:null,rac:null,bsc:null};
-  })();
+// ── Async yield (UI responsiveness) ──────────────────────────────────────────
+const yield_ = () => new Promise(r => setTimeout(r, 0));
 
-  const sectorResults=sectors.map((sec,idx)=>{
-    const az=parseFloat(sec.azimuth)||0;
-    const trx900=sec.trx900||0,trx1800=sec.trx1800||0;
-    const has900=trx900>0,has1800=trx1800>0;
-    const bcchBand=has900?band900:band1800;
-    const tch900Count=has900?Math.max(0,trx900-1):0;
-    const tch1800Count=has900?trx1800:Math.max(0,trx1800-1);
-    const bcchPool=getBcchPool(bcchBand);
-    const tch900Pool=getTchPool(band900||{});
-    const tch1800Pool=band1800?getTchPool(band1800):[];
-    const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
-    const scored=workingCells.map(c=>{
-      if(isNaN(c.lat)||isNaN(c.lon)) return null;
-      const dist=haversineKm(lat,lon,c.lat,c.lon);
-      if(dist>cfg.searchRadius||dist<0.05) return null;
-      const bear=compassBearing(lat,lon,c.lat,c.lon);
-      const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
-      const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
-      return {...c,dist,bear,fwdS,revS,overlap:fwdS*revS,relevance:dist/(1+(fwdS*revS)*3)};
-    }).filter(Boolean).sort((a,b)=>a.relevance-b.relevance);
-    const {effectiveTier1,effectiveTier2,effectiveTier3,demotedNames,upgradedNames,shadowedNames}=classifyTiers(lat,lon,az,sectors,idx,scored,firstTierRadius,beamWidth);
-    const OVL=0.05;
-    const nb900=scored.filter(c=>c.bcch!==null&&!isNaN(Number(c.bcch))&&bandSet900.has(Number(c.bcch)));
-    const allNbBCCHs=[...new Set(nb900.map(c=>Number(c.bcch)).filter(b=>!isNaN(b)))];
-    const tier1BCCHs=new Set(effectiveTier1.filter(c=>bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
-    const tier2BCCHs=new Set(effectiveTier2.filter(c=>bandSet900.has(Number(c.bcch))).map(c=>Number(c.bcch)));
-    const inSiteAdj=new Set(); siteReg.bcch.forEach(b=>{inSiteAdj.add(b-1);inSiteAdj.add(b);inSiteAdj.add(b+1);});
-    const inSiteExact=new Set(siteReg.bcch);
-    const bcchWorstOvl=new Map();
-    nb900.forEach(c=>{const b=Number(c.bcch);const ovl=Math.max(c.fwdS||0,c.revS||0);if(!bcchWorstOvl.has(b)||bcchWorstOvl.get(b)<ovl)bcchWorstOvl.set(b,ovl);});
-    const bcchCands=blocked=>bcchPool.filter(a=>!blocked.has(a)&&!inSiteExact.has(a)).map(a=>({a,sep:allNbBCCHs.length?Math.min(...allNbBCCHs.map(u=>Math.abs(a-u))):9999,ovl:bcchWorstOvl.get(a)??0})).sort((x,y)=>{const sx=x.sep*(1-x.ovl),sy=y.sep*(1-y.ovl);return sy-sx||Math.random()-0.5;});
-    const passes=[
-      {mode:"clean",    cands:bcchCands(new Set([...inSiteAdj,...tier1BCCHs,...tier2BCCHs]))},
-      {mode:"t2_reuse", cands:bcchCands(new Set([...inSiteAdj,...tier1BCCHs]))},
-      {mode:"t1_reuse", cands:bcchCands(inSiteAdj)},
-      {mode:"forced",   cands:bcchPool.filter(a=>!inSiteExact.has(a)).map(a=>({a,sep:0}))},
-    ];
-    const bsicPool=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&c.bcch!=null&&!isNaN(Number(c.bcch))&&c.ncc!=null&&!isNaN(Number(c.ncc))&&c.bcc!=null&&!isNaN(Number(c.bcc))).map(c=>({bcch:Number(c.bcch),ncc:Number(c.ncc),bcc:Number(c.bcc),d:haversineKm(lat,lon,c.lat,c.lon)})).filter(c=>c.d>=0.05);
-    let bestBCCH=null,bestNCC=null,bestBCC=null,bcchMode="clean",bestBsicR=0;
-    const bsicMaxR=cfg.bsicRadius??50;
-    const nccOrd=shuffle(nccPool),bccOrd=shuffle([0,1,2,3,4,5,6,7]);
-    passLoop: for(const pass of passes){
-      let r=bsicMaxR;
-      while(r>=1){
-        const forbidden=new Set();
-        bsicPool.filter(c=>c.d<=r).forEach(c=>forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
-        for(const {a} of pass.cands){for(const n of nccOrd){for(const b of bccOrd){if(!forbidden.has(`${a}_${n}_${b}`)){bestBCCH=a;bestNCC=n;bestBCC=b;bcchMode=pass.mode;bestBsicR=r;break passLoop;}}}}
-        r*=0.8;
-      }
-    }
-    if(bestBCCH===null){
-      const freePool=bcchPool.filter(a=>!inSiteExact.has(a));
-      if(freePool.length){bcchMode="forced";bestBCCH=freePool[0];bestNCC=nccPool[0]??0;const cnt=Array(8).fill(0);bsicPool.forEach(c=>cnt[c.bcc]++);bestBCC=cnt.indexOf(Math.min(...cnt));bestBsicR=0;}
-      else{bcchMode="impossible";bestBCCH=null;bestNCC=null;bestBCC=null;bestBsicR=0;}
-    }
-    if(bestBCCH!==null) siteReg.bcch.push(bestBCCH);
-    const bsicRepeatDist=(bestBCCH==null||bestNCC==null||bestBCC==null)?null:(()=>{const m=bsicPool.filter(c=>c.bcch===bestBCCH&&c.ncc===bestNCC&&c.bcc===bestBCC);return m.length===0?null:Math.min(...m.map(c=>c.d));})();
-    const inSiteBCCHSet=new Set([...siteReg.bcch]);
-    const makeNb=(c,tier)=>({...c,tier,isFirstTier:tier===1,hasBeamOverlap:true,
-      tierLabel:upgradedNames.has(c.cellName)&&!shadowedNames.has(c.cellName)?'1st(upgraded)':shadowedNames.has(c.cellName)?'2nd(shadowed)':demotedNames.has(c.cellName)?'2nd(downgraded)':tier===1?'1st':tier===2?'2nd':'3rd',
-      nbRelevance:c.dist/(1+(c.fwdS+c.revS)*3)});
-    const OVL2=0.05;
-    const nbSort=(a,b)=>{const aZ=(a.fwdS<=OVL2&&a.revS<=OVL2)?1:0,bZ=(b.fwdS<=OVL2&&b.revS<=OVL2)?1:0;return aZ-bZ||a.nbRelevance-b.nbRelevance;};
-    const externalNeighbors=[...effectiveTier1.map(c=>makeNb(c,1)).sort(nbSort),...effectiveTier2.map(c=>makeNb(c,2)).sort(nbSort),...effectiveTier3.map(c=>makeNb(c,3)).sort(nbSort)].slice(0,cfg.maxNeighbours);
-    return {idx,az,trx900,trx1800,has900,has1800,tch900Count,tch1800Count,bcchBandName:bcchBand?.name||"—",
-      bcch:bestBCCH,bcchMode,tch900List:[],tch900Mode:'n/a',tch1800List:[],tch1800Mode:'n/a',
-      ncc:bestNCC,bcc:bestBCC,bsic:bestNCC!=null?`${bestNCC}/${bestBCC}`:'—',bsicDec:bestNCC!=null?bestNCC*8+bestBCC:null,
-      bsicRepeatDist,lac:siteLacRacBsc.lac,rac:siteLacRacBsc.rac,bsc:siteLacRacBsc.bsc,
-      externalNeighbors,tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),allNbBCCHs:allNbBCCHs.sort((a,b)=>a-b),
-      stats:{total:scored.length,tier1Count:effectiveTier1.length,tier2Count:effectiveTier2.length,tier3Count:effectiveTier3.length},
-      _scored:scored,_inSiteBCCHSet:inSiteBCCHSet,_tch900Pool:tch900Pool,_tch1800Pool:tch1800Pool};
-  });
+// ═════════════════════════════════════════════════════════════════════════════
+// OPTIMIZATION ENGINE — explicit interference graph + min-conflicts local search
+//
+// 1. buildModel(): for every movable sector, classify every network cell within
+//    the search radius into tiers (same geometry logic as the audit) and store a
+//    weighted interference edge. Co-site siblings get near-hard weights.
+// 2. Cost = Σ over edges of pairPen(assign_a, assign_b) + λ per changed sector.
+//    pairPen covers co-channel and adjacent-channel for BCCH↔BCCH, BCCH↔TCH
+//    and TCH↔TCH, scaled by the edge's tier weight.
+// 3. solveBCCH(): coordinate descent — repeatedly move the worst cell to the
+//    channel that lowers TOTAL cost most. Only strictly improving moves are
+//    accepted, so the plan can never get worse than the current one.
+//    Perturbation kicks escape local optima; a kick is rolled back unless the
+//    total actually improved.
+// 4. solveTCH(): greedy per-sector rebuild, accepted only when it lowers cost.
+// 5. solveBSIC(): NCC-first (keep current → NCC-only → BCC-only → both),
+//    maximising the same-(BCCH,NCC,BCC) repeat distance.
+// Fully deterministic — same inputs always produce the same result.
+// ═════════════════════════════════════════════════════════════════════════════
 
-  const MODE_RANK={clean:0,'n/a':0,partial:1,site_adj:2,nb_reuse:3,nb_reuse_adj:4,site_reuse:5,reuse:6,impossible:7};
-  const worseMode=(a,b)=>(MODE_RANK[a]??1)>=(MODE_RANK[b]??1)?a:b;
-  const maxRounds=sectorResults.reduce((m,s)=>Math.max(m,s.tch900Count,s.tch1800Count),0);
-  const acc900=sectorResults.map(()=>({list:[],mode:'clean'}));
-  const acc1800=sectorResults.map(()=>({list:[],mode:'clean'}));
-  for(let round=0;round<maxRounds;round++){
-    const sectorOrder=shuffle(sectorResults.map((_,i)=>i));
-    for(const i of sectorOrder){
-      const s=sectorResults[i];
-      if(acc900[i].list.length<s.tch900Count){const {list,mode}=planTCH(s._tch900Pool,s._scored,s._inSiteBCCHSet,siteReg.tch900,1,acc900[i].list);acc900[i].list.push(...list);acc900[i].mode=worseMode(acc900[i].mode,mode);}
-      if(acc1800[i].list.length<s.tch1800Count){const inSiteBCCHSet1800=s.has900?new Set():s._inSiteBCCHSet;const {list,mode}=planTCH(s._tch1800Pool,s._scored,inSiteBCCHSet1800,siteReg.tch1800,1,acc1800[i].list);acc1800[i].list.push(...list);acc1800[i].mode=worseMode(acc1800[i].mode,mode);}
-    }
-  }
-  sectorResults.forEach((s,i)=>{
-    s.tch900List=acc900[i].list.sort((a,b)=>a-b); s.tch900Mode=acc900[i].list.length<s.tch900Count?'partial':acc900[i].mode;
-    s.tch1800List=acc1800[i].list.sort((a,b)=>a-b); s.tch1800Mode=acc1800[i].list.length<s.tch1800Count?'partial':acc1800[i].mode;
-    delete s._scored; delete s._inSiteBCCHSet; delete s._tch900Pool; delete s._tch1800Pool;
-  });
-  const CLEAN_MODES=new Set(['clean']);
-  sectorResults.forEach((sec,i)=>{
-    ['900','1800'].forEach(band=>{
-      const modeKey=`tch${band}Mode`;
-      if(!CLEAN_MODES.has(sec[modeKey])) return;
-      const myTCH=sec[`tch${band}List`]; if(!myTCH||!myTCH.length) return;
-      const hasAdj=sectorResults.some((other,j)=>{if(j===i)return false;return (other[`tch${band}List`]||[]).some(t=>myTCH.some(m=>Math.abs(m-t)===1));});
-      if(hasAdj)sec[modeKey]='site_adj';
-    });
-  });
-  return sectorResults;
+// Tier weights (aligned with the audit's scoring: T1×10, T2×1)
+const W_T1=10, W_T2=1, W_T3=0.15;
+// Pairwise penalty factors (× tier weight)
+const P_BCCH_CO=1.0, P_BCCH_ADJ=0.3, P_BT_CO=0.6, P_BT_ADJ=0.2, P_TT_CO=0.4, P_TT_ADJ=0.1;
+// Co-site penalties (same site — effectively hard constraints)
+const CS_BCCH_CO=100, CS_BCCH_ADJ=30, CS_BT_CO=50, CS_BT_ADJ=15, CS_TT_CO=50, CS_TT_ADJ=15;
+// Change aversion: cost of touching one sector (prevents zero-benefit churn)
+const LAMBDA_BCCH=0.3, LAMBDA_TCH=0.2;
+
+// Symmetric interference penalty between two assignments a/b = {bcch, tch:[…]}
+function pairPen(a,b,w,coSite){
+  let p=0; const A=a.bcch, B=b.bcch;
+  const co  =coSite?CS_BCCH_CO :P_BCCH_CO*w,  adj  =coSite?CS_BCCH_ADJ:P_BCCH_ADJ*w;
+  const btco=coSite?CS_BT_CO   :P_BT_CO*w,    btadj=coSite?CS_BT_ADJ  :P_BT_ADJ*w;
+  const ttco=coSite?CS_TT_CO   :P_TT_CO*w,    ttadj=coSite?CS_TT_ADJ  :P_TT_ADJ*w;
+  if(A!=null&&B!=null){const d=Math.abs(A-B); if(d===0)p+=co; else if(d===1)p+=adj;}
+  if(A!=null) for(const t of b.tch){const d=Math.abs(t-A); if(d===0)p+=btco; else if(d===1)p+=btadj;}
+  if(B!=null) for(const t of a.tch){const d=Math.abs(t-B); if(d===0)p+=btco; else if(d===1)p+=btadj;}
+  for(const t of a.tch) for(const u of b.tch){const d=Math.abs(t-u); if(d===0)p+=ttco; else if(d===1)p+=ttadj;}
+  return p;
 }
 
-// ── planAllSites ───────────────────────────────────────────────────────────────
-// warmVCells: optional {siteName -> vcell[]} — if supplied pass 1 is also Jacobi
-// (optimizer mode: each site sees all other sites' original BCCHs as constraints)
-const yield_ = () => new Promise(r => setTimeout(r, 0));
-async function planAllSites(sites,baseCells,cfg,onProgress,warmVCells) {
-  const maxPasses=Math.max(1,cfg.maxPasses??3);
-  const toVCell=(site,r)=>({cellName:`${site.name}_S${r.idx+1}`,siteName:site.name,lat:parseFloat(site.lat),lon:parseFloat(site.lon),azimuth:r.az,bcch:r.bcch,tchList:[...r.tch900List,...r.tch1800List],ncc:r.ncc,bcc:r.bcc,lac:r.lac,rac:r.rac,bsc:r.bsc,isPlanned:true});
-  // T1/forced/impossible count 10×, T2 counts 1× — never sacrifice T1 to fix T2
-  const scorePass=results=>{let s=0;results.forEach(({sectorResults})=>{sectorResults.forEach(r=>{if(r.bcchMode==='t1_reuse'||r.bcchMode==='forced'||r.bcchMode==='impossible')s+=10;else if(r.bcchMode==='t2_reuse')s+=1;});});return s;};
-  let lastResults=[];
-  if(warmVCells){
-    // Optimizer pass 1: Jacobi seeded with original assignments
-    for(let i=0;i<sites.length;i++){
-      const site=sites[i];
-      onProgress&&onProgress(1,i,sites.length,maxPasses,0);
-      await yield_();
-      const wc=[...baseCells];
-      sites.forEach(s=>{if(s.name!==site.name)(warmVCells[s.name]||[]).forEach(vc=>wc.push(vc));});
-      const sectorResults=planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors},wc,cfg);
-      lastResults.push({site,sectorResults});
+async function buildModel(movables, allCells, cfg, onProgress){
+  const searchRadius=Number(cfg.searchRadius)||10;
+  const firstTierRadius=Number(cfg.firstTierRadius)||5;
+  const beamWidth=Number(cfg.beamWidth)||65;
+  const movIdx=new Map(movables.map((m,i)=>[m.cellName,i]));
+  const state={bcch:movables.map(m=>m.origBcch??null), tch:movables.map(m=>[...m.origTch900,...m.origTch1800])};
+  const fixedEdges=movables.map(()=>[]);
+  const cellOptEdges=movables.map(()=>[]);
+  const optPair=new Map(); // "i|j" (i<j) → undirected edge between two movable cells
+  const addOptPair=(i,j,w,coSite)=>{
+    const a=Math.min(i,j), b=Math.max(i,j), k=a+"|"+b;
+    const e=optPair.get(k);
+    if(!e) optPair.set(k,{i:a,j:b,w,coSite});
+    else { e.w=Math.max(e.w,w); e.coSite=e.coSite||coSite; }
+  };
+  const numTch=c=>(c.tchList||[]).map(Number).filter(v=>!isNaN(v));
+  const numBcch=c=>(c.bcch!=null&&c.bcch!==""&&!isNaN(Number(c.bcch)))?Number(c.bcch):null;
+  for(let i=0;i<movables.length;i++){
+    const m=movables[i];
+    // Co-site siblings (same site name) — near-hard constraints
+    for(const c of allCells){
+      if(c.siteName!==m.siteName||c.cellName===m.cellName) continue;
+      const j=movIdx.get(c.cellName);
+      if(j!==undefined) addOptPair(i,j,0,true);
+      else fixedEdges[i].push({w:0,coSite:true,assign:{bcch:numBcch(c),tch:numTch(c)}});
     }
-    onProgress&&onProgress(1,sites.length,sites.length,maxPasses,0);
-  } else {
-    // New-site planner pass 1: sequential greedy
-    let wc=[...baseCells];
-    for(let i=0;i<sites.length;i++){
-      const site=sites[i];
-      onProgress&&onProgress(1,i,sites.length,maxPasses,0);
-      await yield_();
-      const sectorResults=planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors},wc,cfg);
-      sectorResults.forEach(r=>wc.push(toVCell(site,r)));
-      lastResults.push({site,sectorResults});
+    // Tiered neighbours — same geometry classification as the audit
+    const scored=allCells.map(c=>{
+      if(c.siteName===m.siteName) return null; // co-site handled above
+      if(isNaN(c.lat)||isNaN(c.lon)) return null;
+      const dist=haversineKm(m.lat,m.lon,c.lat,c.lon);
+      if(dist>searchRadius||dist<0.05) return null;
+      const bear=compassBearing(m.lat,m.lon,c.lat,c.lon);
+      const fwdS=Math.max(0,1-angleDiff(bear,m.az)/beamWidth);
+      const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
+      return {...c,dist,bear,fwdS,revS,relevance:dist/(1+(fwdS*revS)*3)};
+    }).filter(Boolean).sort((a,b)=>a.relevance-b.relevance);
+    const {effectiveTier1,effectiveTier2,effectiveTier3}=classifyTiers(m.lat,m.lon,m.az,m.siteSectors,m.secIdx,scored,firstTierRadius,beamWidth);
+    const wOf=new Map();
+    effectiveTier3.forEach(c=>wOf.set(c.cellName,W_T3));
+    effectiveTier2.forEach(c=>wOf.set(c.cellName,W_T2));
+    effectiveTier1.forEach(c=>wOf.set(c.cellName,W_T1));
+    for(const c of scored){
+      const w=wOf.get(c.cellName); if(!w) continue;
+      const j=movIdx.get(c.cellName);
+      if(j!==undefined) addOptPair(i,j,w,false);
+      else fixedEdges[i].push({w,coSite:false,assign:{bcch:numBcch(c),tch:numTch(c)}});
     }
-    onProgress&&onProgress(1,sites.length,sites.length,maxPasses,0);
+    if(i%20===0){ onProgress&&onProgress("Building interference graph…",i,movables.length); await yield_(); }
   }
-  let bestResults=lastResults,bestScore=scorePass(lastResults);
-  for(let pass=2;pass<=maxPasses;pass++){
-    const prevVCells={};
-    lastResults.forEach(({site,sectorResults})=>{prevVCells[site.name]=sectorResults.map(r=>toVCell(site,r));});
-    const locked=new Set(lastResults.filter(({sectorResults})=>sectorResults.every(r=>r.bcchMode==='clean')&&!sectorResults.some(r=>r.externalNeighbors&&r.externalNeighbors.some(nb=>nb.isPlanned))).map(({site})=>site.name));
-    const nextResults=[];
-    for(let i=0;i<sites.length;i++){
-      const site=sites[i];
-      if(locked.has(site.name)){nextResults.push(lastResults.find(r=>r.site.name===site.name));continue;}
-      onProgress&&onProgress(pass,i,sites.length,maxPasses,locked.size);
+  const optEdges=[...optPair.values()];
+  optEdges.forEach((e,k)=>{ cellOptEdges[e.i].push(k); cellOptEdges[e.j].push(k); });
+  return {cells:movables, state, optEdges, cellOptEdges, fixedEdges};
+}
+
+const assignOf=(model,i)=>({bcch:model.state.bcch[i], tch:model.state.tch[i]});
+
+// Local (per-cell) interference cost — sum over all edges touching cell i
+function cellCost(model,i){
+  let p=0;
+  for(const k of model.cellOptEdges[i]){ const e=model.optEdges[k]; p+=pairPen(assignOf(model,e.i),assignOf(model,e.j),e.w,e.coSite); }
+  for(const f of model.fixedEdges[i]) p+=pairPen(assignOf(model,i),f.assign,f.w,f.coSite);
+  return p;
+}
+const tchKey=list=>[...list].sort((a,b)=>a-b).join(",");
+function totalCost(model){
+  let p=0;
+  for(const e of model.optEdges) p+=pairPen(assignOf(model,e.i),assignOf(model,e.j),e.w,e.coSite);
+  model.cells.forEach((m,i)=>{
+    for(const f of model.fixedEdges[i]) p+=pairPen(assignOf(model,i),f.assign,f.w,f.coSite);
+    if(model.state.bcch[i]!==(m.origBcch??null)) p+=LAMBDA_BCCH;
+    if(tchKey(model.state.tch[i])!==tchKey([...m.origTch900,...m.origTch1800])) p+=LAMBDA_TCH;
+  });
+  return p;
+}
+
+async function solveBCCH(model,onProgress){
+  const {cells,state}=model; const n=cells.length;
+  // Delta of moving cell i to channel a — only i's own edges are affected, and
+  // pairPen is symmetric, so evaluating i's local cost before/after is exact.
+  const tryDelta=(i,a)=>{ const old=state.bcch[i]; const before=cellCost(model,i); state.bcch[i]=a; const after=cellCost(model,i); state.bcch[i]=old; return after-before; };
+  const chgDelta=(i,a)=>{ const o=cells[i].origBcch??null; const cur=state.bcch[i]; return (a!==o?LAMBDA_BCCH:0)-(cur!==o?LAMBDA_BCCH:0); };
+  const descend=async(label)=>{
+    for(let round=1;round<=40;round++){
+      let improved=false;
+      const order=[...Array(n).keys()].sort((a,b)=>cellCost(model,b)-cellCost(model,a));
+      for(const i of order){
+        const pool=cells[i].bcchPool; if(!pool.length) continue;
+        const cur=state.bcch[i];
+        let bestA=cur, bestD=-1e-6;
+        for(const a of pool){
+          if(a===cur) continue;
+          const d=tryDelta(i,a)+chgDelta(i,a);
+          if(d<bestD){ bestD=d; bestA=a; }
+        }
+        if(bestA!==cur){ state.bcch[i]=bestA; improved=true; }
+      }
+      onProgress&&onProgress(`${label} — round ${round}`,Math.min(round,40),40);
       await yield_();
-      const wc=[...baseCells];
-      sites.forEach(s=>{if(s.name!==site.name)(prevVCells[s.name]||[]).forEach(vc=>wc.push(vc));});
-      const sectorResults=planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors},wc,cfg);
-      nextResults.push({site,sectorResults});
+      if(!improved) return;
     }
-    onProgress&&onProgress(pass,sites.length,sites.length,maxPasses,locked.size);
+  };
+  await descend("Solving BCCH");
+  // Perturbation kicks: force still-conflicted cells to their least-bad
+  // alternative, re-descend, keep only if the TOTAL improved (else roll back).
+  for(let kick=1;kick<=3;kick++){
+    const stuck=[...Array(n).keys()].filter(i=>cellCost(model,i)>=W_T1&&cells[i].bcchPool.length>1);
+    if(!stuck.length) break;
+    const snapshot=[...state.bcch]; const before=totalCost(model);
+    for(const i of stuck){
+      const cur=state.bcch[i]; let bestA=null, bestD=Infinity;
+      for(const a of cells[i].bcchPool){ if(a===cur) continue; const d=tryDelta(i,a); if(d<bestD){ bestD=d; bestA=a; } }
+      if(bestA!=null) state.bcch[i]=bestA;
+    }
+    await descend(`BCCH kick ${kick}`);
+    if(totalCost(model)>=before-1e-9){ state.bcch=snapshot; break; }
+  }
+}
+
+async function solveTCH(model,onProgress){
+  const {cells,state}=model; const n=cells.length;
+  const changed=(m,list)=>tchKey(list)!==tchKey([...m.origTch900,...m.origTch1800]);
+  // Greedy per-band selection: pick `count` channels from `pool`, one slot at a
+  // time, each minimising the cell's local cost given channels chosen so far.
+  const bandSel=(i,pool,count,other)=>{
+    const sel=[];
+    for(let s=0;s<count;s++){
+      let bestA=null, bestP=Infinity, bestSpread=-1;
+      for(const a of pool){
+        if(sel.some(t=>Math.abs(t-a)<2)) continue;          // intra-sector sep ≥ 2
+        if(other.some(t=>Math.abs(t-a)<2)) continue;
+        const b=state.bcch[i]; if(b!=null&&Math.abs(a-b)<2) continue; // vs own BCCH
+        const saved=state.tch[i];
+        state.tch[i]=[...other,...sel,a];
+        const p=cellCost(model,i);
+        state.tch[i]=saved;
+        const spread=sel.length?Math.min(...sel.map(t=>Math.abs(t-a))):9999;
+        if(p<bestP-1e-9||(Math.abs(p-bestP)<=1e-9&&spread>bestSpread)){ bestP=p; bestA=a; bestSpread=spread; }
+      }
+      if(bestA==null) break;
+      sel.push(bestA);
+    }
+    return sel;
+  };
+  for(let round=1;round<=3;round++){
+    let improved=false;
+    const order=[...Array(n).keys()].sort((a,b)=>cellCost(model,b)-cellCost(model,a));
+    for(const i of order){
+      const m=cells[i];
+      const c900=m.origTch900.length, c1800=m.origTch1800.length;
+      if(!c900&&!c1800) continue;
+      const cur=state.tch[i];
+      const cur1800=cur.filter(isArfcn1800);
+      const curCost=cellCost(model,i)+(changed(m,cur)?LAMBDA_TCH:0);
+      const s900=c900?bandSel(i,m.tch900Pool,c900,cur1800):[];
+      const s1800=c1800?bandSel(i,m.tch1800Pool,c1800,s900):[];
+      const candidate=[...s900,...s1800];
+      if(candidate.length<c900+c1800) continue; // couldn't fill all slots — keep current
+      state.tch[i]=candidate;
+      const newCost=cellCost(model,i)+(changed(m,candidate)?LAMBDA_TCH:0);
+      if(newCost<curCost-1e-9) improved=true;
+      else state.tch[i]=cur;
+    }
+    onProgress&&onProgress(`Solving TCH — round ${round}`,round,3);
     await yield_();
-    lastResults=nextResults;
-    const s=scorePass(nextResults);
-    if(s<bestScore){bestScore=s;bestResults=nextResults;}
+    if(!improved) break;
   }
-  return bestResults;
+}
+
+// BSIC phase — NCC-first candidate order, maximise same-triple repeat distance.
+// Movable cells assigned sequentially see each other's decisions.
+function solveBSIC(model, movables, allCells, cfg){
+  const bsicR=Number(cfg.bsicRadius)||50;
+  const nccPool=parseARFCNList(cfg.nccStr||"0-7").filter(x=>x>=0&&x<=7);
+  const movSet=new Set(movables.map(m=>m.cellName));
+  const fixedTriples=allCells
+    .filter(c=>!movSet.has(c.cellName)&&!isNaN(c.lat)&&!isNaN(c.lon)
+      &&c.bcch!=null&&!isNaN(Number(c.bcch))&&c.ncc!=null&&!isNaN(Number(c.ncc))&&c.bcc!=null&&!isNaN(Number(c.bcc)))
+    .map(c=>({bcch:Number(c.bcch),ncc:Number(c.ncc),bcc:Number(c.bcc),lat:c.lat,lon:c.lon}));
+  const assigned=[];
+  const repDist=(i,bcch,ncc,bcc)=>{
+    const m=movables[i]; let d=Infinity;
+    for(const t of fixedTriples){ if(t.bcch!==bcch||t.ncc!==ncc||t.bcc!==bcc) continue; const dd=haversineKm(m.lat,m.lon,t.lat,t.lon); if(dd>=0.05&&dd<d)d=dd; }
+    for(const t of assigned){ if(t.i===i||t.bcch!==bcch||t.ncc!==ncc||t.bcc!==bcc) continue; const dd=haversineKm(m.lat,m.lon,t.lat,t.lon); if(dd<d)d=dd; }
+    return d;
+  };
+  return movables.map((m,i)=>{
+    const bcch=model?model.state.bcch[i]:(m.origBcch??null);
+    const curN=(m.origNcc!=null&&!isNaN(Number(m.origNcc)))?Number(m.origNcc):null;
+    const curB=(m.origBcc!=null&&!isNaN(Number(m.origBcc)))?Number(m.origBcc):null;
+    if(bcch==null) return {ncc:curN,bcc:curB,changeType:'no_bcch'};
+    const cands=[]; const seen=new Set();
+    const push=(nc,b,type)=>{ const k=nc+"_"+b; if(seen.has(k))return; seen.add(k); cands.push([nc,b,type]); };
+    if(curN!=null&&curB!=null) push(curN,curB,'none');
+    if(curB!=null) nccPool.forEach(nc=>push(nc,curB,'ncc_only'));
+    if(curN!=null) for(let b=0;b<8;b++) push(curN,b,'bcc_only');
+    nccPool.forEach(nc=>{ for(let b=0;b<8;b++) push(nc,b,'ncc_and_bcc'); });
+    let chosen=null, chosenD=-1, chosenType='impossible';
+    for(const [nc,b,type] of cands){
+      const d=repDist(i,bcch,nc,b);
+      if(d>=bsicR){ chosen=[nc,b]; chosenType=type; chosenD=d; break; }
+      if(d>chosenD){ chosen=[nc,b]; chosenD=d; chosenType=type; }
+    }
+    if(!chosen) return {ncc:curN,bcc:curB,changeType:'impossible'};
+    assigned.push({i,bcch,ncc:chosen[0],bcc:chosen[1],lat:m.lat,lon:m.lon});
+    const isSame=chosen[0]===curN&&chosen[1]===curB;
+    return {ncc:chosen[0],bcc:chosen[1],changeType:isSame?'none':chosenType};
+  });
 }
 
 // ── Build opt sites from target list ─────────────────────────────────────────
@@ -675,9 +644,14 @@ function auditOneSite(site, allCells, cfg) {
     }
     const bsicConflict=bsicRepeatDist!==null&&bsicRepeatDist<(bsicRadius??50);
 
-    // TCH conflicts: any current TCH appearing in scored neighbours' TCH lists
-    const nbTCHSet=new Set(scored.flatMap(c=>(c.tchList||[]).map(Number).filter(v=>!isNaN(v))));
-    const tchConflicts=curTch.filter(t=>nbTCHSet.has(Number(t)));
+    // TCH conflicts: co-channel with a Tier-1/Tier-2 neighbour's TCH or BCCH.
+    // Tier-weighted — distant low-overlap cells no longer count as conflicts.
+    const nbFreqSet=new Set();
+    [...effectiveTier1,...effectiveTier2].forEach(c=>{
+      (c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n))nbFreqSet.add(n);});
+      if(c.bcch!=null&&c.bcch!==""&&!isNaN(Number(c.bcch))) nbFreqSet.add(Number(c.bcch));
+    });
+    const tchConflicts=curTch.map(Number).filter(t=>!isNaN(t)&&nbFreqSet.has(t));
 
     // Co-site checks (sibling sectors at the same site)
     const siblingBCCHs=sectors.filter((_,i)=>i!==idx).map(s=>s.bcch).filter(b=>b!==null&&!isNaN(Number(b))).map(Number);
@@ -710,224 +684,6 @@ function auditAllSites(optSites, allCells, cfg) {
   }));
   const total=results.reduce((n,r)=>n+r.sectorAudits.filter(s=>s.hasConflict).length,0);
   return {siteAudits:results, summary:{t1,t2,bsic,tch,cosite,total}};
-}
-
-// ── Iteration recommendation ──────────────────────────────────────────────────
-function recommendIterations(optSites, searchRadius) {
-  if(optSites.length<=1) return {passes:1,reason:"Only one site — single pass is sufficient."};
-  const counts=optSites.map(s=>optSites.filter(o=>o.name!==s.name&&haversineKm(s.lat,s.lon,o.lat,o.lon)<=searchRadius).length);
-  const avg=counts.reduce((a,b)=>a+b,0)/optSites.length;
-  if(avg===0) return {passes:1,reason:"No optimization sites are within each other's search radius — single pass is sufficient."};
-  if(avg<2)   return {passes:2,reason:`Average ${avg.toFixed(1)} neighboring optimization sites per site — 2 passes recommended.`};
-  if(avg<4)   return {passes:3,reason:`Average ${avg.toFixed(1)} neighboring optimization sites per site — 3 passes recommended.`};
-  return      {passes:5,reason:`Dense cluster: average ${avg.toFixed(1)} neighboring optimization sites — 5 passes recommended.`};
-}
-
-// ── BSIC-only optimizer ───────────────────────────────────────────────────────
-function bsicOnlyPlanOneSite(site, workingCells, cfg, fixConflictsOnly) {
-  const {lat,lon,sectors}=site;
-  const nccPool=parseARFCNList(cfg.nccStr||"0-7").filter(n=>n>=0&&n<=7);
-  const bsicMaxR=cfg.bsicRadius??50;
-
-  // Pre-build bsicPool from workingCells
-  const bsicPool=workingCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&c.bcch!=null&&!isNaN(Number(c.bcch))&&c.ncc!=null&&!isNaN(Number(c.ncc))&&c.bcc!=null&&!isNaN(Number(c.bcc))).map(c=>({bcch:Number(c.bcch),ncc:Number(c.ncc),bcc:Number(c.bcc),d:haversineKm(lat,lon,c.lat,c.lon)})).filter(c=>c.d>=0.05);
-
-  const siteAssignedBSICs=[];
-
-  return sectors.map((sec,idx)=>{
-    const curBcch=sec.bcch, curNcc=sec.ncc, curBcc=sec.bcc;
-
-    // Check if there's an actual BSIC conflict for this sector
-    let curBsicRepeat=null;
-    if(curBcch!==null&&!isNaN(curBcch)&&curNcc!==null&&!isNaN(curNcc)&&curBcc!==null&&!isNaN(curBcc)){
-      const m=bsicPool.filter(c=>c.bcch===curBcch&&c.ncc===curNcc&&c.bcc===curBcc);
-      if(m.length) curBsicRepeat=Math.min(...m.map(c=>c.d));
-    }
-    const hasBsicConflict=curBsicRepeat!==null&&curBsicRepeat<bsicMaxR;
-
-    if(fixConflictsOnly&&!hasBsicConflict){
-      // No conflict — keep current NCC/BCC
-      siteAssignedBSICs.push({bcch:curBcch,ncc:curNcc,bcc:curBcc});
-      return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:curNcc,newBcc:curBcc,changed:false,changeType:'none'};
-    }
-
-    if(curBcch===null||isNaN(curBcch)){
-      siteAssignedBSICs.push({bcch:curBcch,ncc:curNcc,bcc:curBcc});
-      return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:curNcc,newBcc:curBcc,changed:false,changeType:'no_bcch'};
-    }
-
-    const siteExclude=new Set(siteAssignedBSICs.map(b=>`${b.bcch}_${b.ncc}_${b.bcc}`));
-
-    // Pass 1: NCC-only change (keep currentBcc)
-    let bestNcc=null,bestBcc=null,changeType='none';
-    if(curBcc!==null&&!isNaN(curBcc)){
-      outer1: for(let r=bsicMaxR;r>=1;r*=0.8){
-        const forbidden=new Set();
-        bsicPool.filter(c=>c.d<=r).forEach(c=>forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
-        for(const n of shuffle(nccPool)){
-          const key=`${curBcch}_${n}_${curBcc}`;
-          if(!forbidden.has(key)&&!siteExclude.has(key)){
-            bestNcc=n; bestBcc=curBcc;
-            changeType=n===curNcc?'none':'ncc_only';
-            break outer1;
-          }
-        }
-      }
-    }
-
-    // Pass 2: any (NCC, BCC) — last resort
-    if(bestNcc===null){
-      const bccOrd=shuffle([0,1,2,3,4,5,6,7]);
-      outer2: for(let r=bsicMaxR;r>=1;r*=0.8){
-        const forbidden=new Set();
-        bsicPool.filter(c=>c.d<=r).forEach(c=>forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
-        for(const n of shuffle(nccPool)){
-          for(const b of bccOrd){
-            const key=`${curBcch}_${n}_${b}`;
-            if(!forbidden.has(key)&&!siteExclude.has(key)){
-              bestNcc=n; bestBcc=b; changeType='ncc_and_bcc'; break outer2;
-            }
-          }
-        }
-      }
-    }
-
-    if(bestNcc===null){
-      siteAssignedBSICs.push({bcch:curBcch,ncc:curNcc,bcc:curBcc});
-      return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:curNcc,newBcc:curBcc,changed:false,changeType:'impossible'};
-    }
-
-    siteAssignedBSICs.push({bcch:curBcch,ncc:bestNcc,bcc:bestBcc});
-    return {idx,cellName:sec.cellName,bcch:curBcch,oldNcc:curNcc,oldBcc:curBcc,newNcc:bestNcc,newBcc:bestBcc,changed:bestNcc!==curNcc||bestBcc!==curBcc,changeType};
-  });
-}
-
-async function bsicOnlyPlanAllSites(optSites, baseCells, cfg, fixConflictsOnly, onProgress) {
-  const maxPasses=Math.max(1,cfg.maxPasses??3);
-  const bsicMaxR=cfg.bsicRadius??50;
-
-  const toVCellBSIC=(site,r)=>({
-    cellName:r.cellName||`${site.name}_S${r.idx+1}`, siteName:site.name,
-    lat:site.lat, lon:site.lon, azimuth:site.sectors[r.idx]?.azimuth||0,
-    bcch:r.bcch, ncc:r.newNcc, bcc:r.newBcc,
-    tchList:site.sectors[r.idx]?.tchList||[], isPlanned:true
-  });
-
-  const scoreBSIC=results=>{
-    let n=0;
-    results.forEach(({site,secResults})=>secResults.forEach(r=>{
-      const d=baseCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&c.bcch===r.bcch&&c.ncc===r.newNcc&&c.bcc===r.newBcc).map(c=>haversineKm(site.lat,site.lon,c.lat,c.lon)).filter(d=>d>=0.05);
-      if(d.length&&Math.min(...d)<bsicMaxR) n++;
-    }));
-    return n;
-  };
-
-  const isLockedBSIC=({site,secResults})=>{
-    const allGood=secResults.every(r=>{
-      const m=baseCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&Number(c.bcch)===r.bcch&&Number(c.ncc)===r.newNcc&&Number(c.bcc)===r.newBcc&&haversineKm(site.lat,site.lon,c.lat,c.lon)>=0.05);
-      const dist=m.length?Math.min(...m.map(c=>haversineKm(site.lat,site.lon,c.lat,c.lon))):Infinity;
-      return dist>=bsicMaxR;
-    });
-    if(!allGood) return false;
-    return optSites.every(other=>other.name===site.name||haversineKm(site.lat,site.lon,other.lat,other.lon)>bsicMaxR);
-  };
-
-  // Pass 1: sequential
-  let lastResults=[];
-  {
-    let wc=[...baseCells];
-    for(let i=0;i<optSites.length;i++){
-      const site=optSites[i];
-      onProgress&&onProgress(1,i,optSites.length,maxPasses,0);
-      await yield_();
-      const secResults=bsicOnlyPlanOneSite(site,wc,cfg,fixConflictsOnly);
-      secResults.forEach(r=>wc.push(toVCellBSIC(site,r)));
-      lastResults.push({site,secResults});
-    }
-    onProgress&&onProgress(1,optSites.length,optSites.length,maxPasses,0);
-  }
-
-  let bestResults=lastResults, bestScore=scoreBSIC(lastResults);
-
-  for(let pass=2;pass<=maxPasses;pass++){
-    const prevVCells=Object.fromEntries(lastResults.map(r=>[r.site.name,r.secResults.map(s=>toVCellBSIC(r.site,s))]));
-    const locked=new Set(lastResults.filter(isLockedBSIC).map(r=>r.site.name));
-    const nextResults=[];
-    for(let i=0;i<optSites.length;i++){
-      const site=optSites[i];
-      if(locked.has(site.name)){nextResults.push(lastResults.find(r=>r.site.name===site.name));continue;}
-      onProgress&&onProgress(pass,i,optSites.length,maxPasses,locked.size);
-      await yield_();
-      const wc=[...baseCells];
-      optSites.forEach(s=>{if(s.name!==site.name)(prevVCells[s.name]||[]).forEach(vc=>wc.push(vc));});
-      const secResults=bsicOnlyPlanOneSite(site,wc,cfg,fixConflictsOnly);
-      nextResults.push({site,secResults});
-    }
-    await yield_();
-    lastResults=nextResults;
-    const s=scoreBSIC(nextResults);
-    if(s<bestScore){bestScore=s;bestResults=nextResults;}
-  }
-  onProgress&&onProgress(maxPasses,optSites.length,optSites.length,maxPasses,0);
-  return bestResults;
-}
-
-// ── Build result rows from optimization output ────────────────────────────────
-function buildResultRows(optSites, beforeAudit, optOutput, optWhat, baseCells, cfg) {
-  const rows=[];
-
-  optOutput.forEach(({site, sectorResults, secResults})=>{
-    const beforeSite=beforeAudit.siteAudits.find(a=>a.siteName===site.name);
-    const sectors=sectorResults||secResults; // full or bsic-only
-
-    sectors.forEach((res,si)=>{
-      const sec=site.sectors[si];
-      const before=beforeSite?.sectorAudits[si];
-
-      if(optWhat==='bsic_only'){
-        const r=res;
-        const newBsicRepeat=(()=>{
-          if(r.bcch===null||r.newNcc===null||r.newBcc===null) return null;
-          const m=baseCells.filter(c=>!isNaN(c.lat)&&!isNaN(c.lon)&&Number(c.bcch)===r.bcch&&Number(c.ncc)===r.newNcc&&Number(c.bcc)===r.newBcc&&haversineKm(site.lat,site.lon,c.lat,c.lon)>=0.05);
-          if(!m.length) return null;
-          return Math.min(...m.map(c=>haversineKm(site.lat,site.lon,c.lat,c.lon)));
-        })();
-        rows.push({
-          BCF:site.name, Segment:sec.cellName||`S${si+1}`, Azimuth:Math.round(parseFloat(sec.azimuth)||0),
-          BCCH:r.bcch??'',
-          Old_NCC:r.oldNcc??'', Old_BCC:r.oldBcc??'',
-          Old_BSIC:r.oldNcc!=null&&r.oldBcc!=null?`${r.oldNcc}/${r.oldBcc}`:'',
-          New_NCC:r.newNcc??'', New_BCC:r.newBcc??'',
-          New_BSIC:r.newNcc!=null&&r.newBcc!=null?`${r.newNcc}/${r.newBcc}`:'',
-          BSIC_Changed:r.changed?'YES':'NO',
-          Change_Type:r.changeType,
-          Old_BSIC_Sep_km:before?.bsicRepeatDist!=null?Math.round(before.bsicRepeatDist*10)/10:'∞',
-          New_BSIC_Sep_km:newBsicRepeat!=null?Math.round(newBsicRepeat*10)/10:'∞',
-        });
-      } else {
-        const r=res;
-        const newTch=[...(r.tch900List||[]),...(r.tch1800List||[])];
-        const oldTch=(sec.tchList||[]).map(Number).filter(v=>!isNaN(v));
-        const tchChanged=newTch.sort((a,b)=>a-b).join(',')!==oldTch.sort((a,b)=>a-b).join(',');
-        rows.push({
-          BCF:site.name, Segment:sec.cellName||`S${si+1}`, Azimuth:Math.round(parseFloat(sec.azimuth)||0),
-          Old_BCCH:sec.bcch??'', New_BCCH:r.bcch??'',
-          BCCH_Changed:r.bcch!==sec.bcch?'YES':'NO',
-          Old_NCC:sec.ncc??'', Old_BCC:sec.bcc??'',
-          Old_BSIC:sec.ncc!=null&&sec.bcc!=null?`${sec.ncc}/${sec.bcc}`:'',
-          New_NCC:r.ncc??'', New_BCC:r.bcc??'',
-          New_BSIC:r.ncc!=null&&r.bcc!=null?`${r.ncc}/${r.bcc}`:'',
-          BSIC_Changed:(r.ncc!==sec.ncc||r.bcc!==sec.bcc)?'YES':'NO',
-          Old_BCCH_Mode:before?.bcchMode||'', New_BCCH_Mode:r.bcchMode,
-          Old_BSIC_Sep_km:before?.bsicRepeatDist!=null?Math.round(before.bsicRepeatDist*10)/10:'∞',
-          New_BSIC_Sep_km:r.bsicRepeatDist!=null?Math.round(r.bsicRepeatDist*10)/10:'∞',
-          Old_TCH:oldTch.join(' '), New_TCH:newTch.join(' '),
-          TCH_Changed:tchChanged?'YES':'NO',
-        });
-      }
-    });
-  });
-  return rows;
 }
 
 // ── Export XLSX ───────────────────────────────────────────────────────────────
@@ -1029,11 +785,9 @@ function App() {
   const [optSites,setOptSites]=useState(null);
   const [allCells,setAllCells]=useState(null);
   const [baseCells,setBaseCells]=useState(null);
-  const [iterRec,setIterRec]=useState(null);
 
   const [optScope,setOptScope]=useState("conflicts_only");
   const [optWhat,setOptWhat]=useState("full");
-  const [optPasses,setOptPasses]=useState(3);
 
   const [results,setResults]=useState(null);
   const [resultRows,setResultRows]=useState([]);
@@ -1098,117 +852,138 @@ function App() {
     const base=network.filter(c=>!optSiteNames.has(c.siteName));
 
     const audit=auditAllSites(opts,network,cfg);
-    const rec=recommendIterations(opts,cfg.searchRadius);
 
     setAllCells(network);
     setBaseCells(base);
     setOptSites(opts);
     setAuditResult(audit);
-    setIterRec(rec);
-    setOptPasses(rec.passes);
     setStep(3);
   };
 
   const runOptimize=async()=>{
-    setErr("");setResults(null);setPlanning(true);
-    const cfgWithPasses={...cfg,maxPasses:Math.max(1,Number(optPasses)||1)};
-    const fixOnly=optScope==="conflicts_only";
-
-    // For "fix conflicts only" in full mode: only re-plan conflicted sites
-    const sitesToPlan=fixOnly
-      ? optSites.filter(s=>auditResult.siteAudits.find(a=>a.siteName===s.name)?.hasConflict)
-      : optSites;
-
-    // Sites NOT being re-planned: treat as base cells
-    const extraBase=optWhat==='full'
-      ? optSites.filter(s=>!sitesToPlan.find(p=>p.name===s.name)).flatMap(s=>s.sectors.map(sec=>({siteName:s.name,cellName:sec.cellName,lat:s.lat,lon:s.lon,azimuth:sec.azimuth,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,tchList:sec.tchList})))
-      : [];
-    const effectiveBase=[...baseCells,...extraBase];
-
-    setProg({pass:1,totalPasses:cfgWithPasses.maxPasses,done:0,total:sitesToPlan.length,siteName:"",locked:0});
-
+    setErr(""); setResults(null); setPlanning(true);
+    setProg({pass:1,totalPasses:4,done:0,total:1,siteName:"Preparing…",locked:0});
+    await yield_();
     try{
-      let optOutput;
+      const fixOnly=optScope==="conflicts_only";
+      const ncfg={searchRadius:Number(cfg.searchRadius)||10, firstTierRadius:Number(cfg.firstTierRadius)||5,
+        bsicRadius:Number(cfg.bsicRadius)||50, beamWidth:Number(cfg.beamWidth)||65, nccStr:cfg.nccStr,
+        maxNeighbours:Number(cfg.maxNeighbours)||10, bands:cfg.bands};
 
-      if(optWhat==='bsic_only'){
-        const rawOut=await bsicOnlyPlanAllSites(
-          sitesToPlan, effectiveBase, cfgWithPasses, fixOnly,
-          (pass,done,total,totalPasses,locked)=>setProg({pass,totalPasses,done,total,siteName:sitesToPlan[done]?.name||"",locked})
-        );
-        // Merge: sites not in sitesToPlan keep their current values
-        optOutput=optSites.map(site=>{
-          const planned=rawOut.find(r=>r.site.name===site.name);
-          if(planned) return {site,secResults:planned.secResults};
-          return {site,secResults:site.sectors.map((sec,idx)=>({idx,cellName:sec.cellName,bcch:sec.bcch,oldNcc:sec.ncc,oldBcc:sec.bcc,newNcc:sec.ncc,newBcc:sec.bcc,changed:false,changeType:'none'}))};
-        });
-      } else {
-        // Build warm-start vcells from original opt-site assignments so pass 1 is
-        // also Jacobi — every site sees all other opt sites' existing BCCHs upfront
-        const warmVCells={};
-        sitesToPlan.forEach(site=>{
-          warmVCells[site.name]=site.sectors.map((sec,idx)=>({
-            cellName:sec.cellName||`${site.name}_S${idx+1}`, siteName:site.name,
+      // Movable sectors: conflicted ones only (scope=fix) or every listed sector.
+      // Non-movable sectors stay as fixed context — minimal-change by construction.
+      const movables=[];
+      optSites.forEach(site=>{
+        const auditSite=auditResult.siteAudits.find(a=>a.siteName===site.name);
+        site.sectors.forEach((sec,idx)=>{
+          const sa=auditSite?.sectorAudits[idx];
+          if(fixOnly&&!(sa&&sa.hasConflict)) return;
+          const bcchNum=(sec.bcch!=null&&!isNaN(Number(sec.bcch)))?Number(sec.bcch):null;
+          const on900=bcchNum!=null?isArfcn900(bcchNum):(sec.trx900||0)>0;
+          const bandDef=on900?ncfg.bands[0]:(ncfg.bands[1]||ncfg.bands[0]);
+          const tchNums=(sec.tchList||[]).map(Number).filter(v=>!isNaN(v));
+          movables.push({
+            siteName:site.name, cellName:sec.cellName||`${site.name}_S${idx+1}`,
             lat:parseFloat(site.lat), lon:parseFloat(site.lon),
-            azimuth:parseFloat(sec.azimuth)||0,
-            bcch:sec.bcch, ncc:sec.ncc, bcc:sec.bcc, tchList:sec.tchList||[],
-            isPlanned:true
-          }));
+            az:parseFloat(sec.azimuth)||0, siteSectors:site.sectors, secIdx:idx,
+            origBcch:bcchNum, origNcc:sec.ncc, origBcc:sec.bcc,
+            origTch900:tchNums.filter(isArfcn900), origTch1800:tchNums.filter(isArfcn1800),
+            bcchPool:parseARFCNList(bandDef?.bcchStr||""),
+            tch900Pool:parseARFCNList(ncfg.bands[0]?.tchStr||""),
+            tch1800Pool:ncfg.bands[1]?parseARFCNList(ncfg.bands[1].tchStr||""):[],
+          });
         });
-        const rawOut=await planAllSites(
-          sitesToPlan.map(s=>({...s,sectors:s.sectors.map(sec=>({...sec,trx900:sec.trx900||1,trx1800:sec.trx1800||0}))})),
-          effectiveBase, cfgWithPasses,
-          (pass,i,total,totalPasses,locked)=>setProg({pass,totalPasses,done:i,total,siteName:sitesToPlan[i]?.name||"",locked}),
-          warmVCells
-        );
-        optOutput=optSites.map(site=>{
-          const planned=rawOut.find(r=>r.site.name===site.name);
-          if(planned) return {site,sectorResults:planned.sectorResults};
-          return {site,sectorResults:site.sectors.map((sec,idx)=>({idx,az:sec.azimuth,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,bcchMode:'clean',tch900List:[],tch1800List:[],bsicRepeatDist:null}))};
-        });
-      }
-
-      // Post-audit — compare against original; fall back if optimizer made things worse
-      const buildNetwork=out=>out.flatMap(({site,sectorResults,secResults})=>{
-        const sectors=sectorResults||secResults;
-        return sectors.map((r,i)=>({
-          siteName:site.name, cellName:site.sectors[i]?.cellName||`${site.name}_S${i+1}`,
-          lat:site.lat, lon:site.lon, azimuth:site.sectors[i]?.azimuth||0,
-          bcch:optWhat==='bsic_only'?r.bcch:(r.bcch??site.sectors[i]?.bcch),
-          ncc:optWhat==='bsic_only'?r.newNcc:(r.ncc??site.sectors[i]?.ncc),
-          bcc:optWhat==='bsic_only'?r.newBcc:(r.bcc??site.sectors[i]?.bcc),
-          tchList:optWhat==='bsic_only'?site.sectors[i]?.tchList||[]:([...(r.tch900List||[]),(r.tch1800List||[])]),
-        }));
       });
-      const candidateNetwork=buildNetwork(optOutput);
-      const candidateAudit=auditAllSites(optSites,[...baseCells,...candidateNetwork],cfg);
-      const auditScore=s=>(s.t1+s.cosite)*10+s.t2;
-      const origScore=auditScore(auditResult.summary);
-      const newScore=auditScore(candidateAudit.summary);
-      if(newScore>origScore){
-        // Optimizer degraded the plan — revert to original assignments
-        const origOut=optSites.map(site=>({
-          site,
-          ...(optWhat==='bsic_only'
-            ? {secResults:site.sectors.map((sec,idx)=>({idx,cellName:sec.cellName,bcch:sec.bcch,oldNcc:sec.ncc,oldBcc:sec.bcc,newNcc:sec.ncc,newBcc:sec.bcc,changed:false,changeType:'none'}))}
-            : {sectorResults:site.sectors.map((sec,idx)=>({idx,az:parseFloat(sec.azimuth)||0,bcch:sec.bcch,ncc:sec.ncc,bcc:sec.bcc,bcchMode:auditResult.siteAudits.find(a=>a.siteName===site.name)?.sectorAudits[idx]?.bcchMode||'clean',tch900List:(sec.tchList||[]).filter(t=>isArfcn900(t)),tch1800List:(sec.tchList||[]).filter(t=>isArfcn1800(t)),bsicRepeatDist:auditResult.siteAudits.find(a=>a.siteName===site.name)?.sectorAudits[idx]?.bsicRepeatDist??null}))})
-        }));
+      if(!movables.length){ setErr("Nothing to optimize under the current scope — the audit shows no conflicted sectors."); setPlanning(false); return; }
 
-        optOutput=origOut;
-        setErr(`Optimizer could not improve the plan (score ${newScore} vs original ${origScore}) — showing original assignments unchanged. Try increasing planning passes or adjusting the BCCH pool.`);
+      const progFn=phase=>(label,done,total)=>setProg({pass:phase,totalPasses:4,done,total,siteName:label,locked:0});
+
+      let model=null, beforeLocal=[], afterLocal=[];
+      if(optWhat!=='bsic_only'){
+        model=await buildModel(movables,allCells,ncfg,progFn(1));
+        beforeLocal=movables.map((_,i)=>cellCost(model,i));
+        await solveBCCH(model,progFn(2));
+        await solveTCH(model,progFn(3));
+        afterLocal=movables.map((_,i)=>cellCost(model,i));
+      }
+      setProg({pass:4,totalPasses:4,done:0,total:movables.length,siteName:"Assigning BSIC…",locked:0});
+      await yield_();
+      const bsicRes=solveBSIC(model,movables,allCells,ncfg);
+
+      const finalOf=movables.map((m,i)=>({
+        bcch:model?model.state.bcch[i]:m.origBcch,
+        tch:model?[...model.state.tch[i]].sort((a,b)=>a-b):[...m.origTch900,...m.origTch1800].sort((a,b)=>a-b),
+        ncc:bsicRes[i]?.ncc??m.origNcc, bcc:bsicRes[i]?.bcc??m.origBcc,
+        changeType:bsicRes[i]?.changeType||'none',
+        benefit:model?Math.max(0,beforeLocal[i]-afterLocal[i]):0,
+      }));
+      const movByCell=new Map(movables.map((m,i)=>[m.cellName,i]));
+
+      // Rebuild network + opt sites with the new assignments and re-audit
+      const applySec=(site,sec,idx)=>{
+        const i=movByCell.get(sec.cellName||`${site.name}_S${idx+1}`);
+        if(i===undefined) return sec;
+        const f=finalOf[i];
+        return {...sec,bcch:f.bcch,ncc:f.ncc,bcc:f.bcc,tchList:f.tch};
+      };
+      const afterOptSites=optSites.map(site=>({...site,sectors:site.sectors.map((sec,idx)=>applySec(site,sec,idx))}));
+      const afterNetwork=allCells.map(c=>{
+        const i=movByCell.get(c.cellName);
+        if(i===undefined) return c;
+        const f=finalOf[i];
+        return {...c,bcch:f.bcch,ncc:f.ncc,bcc:f.bcc,tchList:f.tch};
+      });
+      const afterAudit=auditAllSites(afterOptSites,afterNetwork,ncfg);
+
+      // Sanity note: the solver only accepts strictly improving moves, so the
+      // audit should never look worse. If sector-level counting disagrees with
+      // the pairwise weights, surface it — but still show the ranked results.
+      const auditScore=s=>(s.t1+s.cosite)*10+s.bsic*5+s.tch*2+s.t2;
+      if(auditScore(afterAudit.summary)>auditScore(auditResult.summary)){
+        setErr("Note: the weighted pairwise interference decreased, but the sector-level audit counts did not — review the ranked changes below before applying.");
       }
 
-      // Post-audit for after-summary (reuse buildNetwork on final optOutput)
-      const finalNetwork=buildNetwork(optOutput);
-      const afterNetwork=[...baseCells,...finalNetwork];
-      const afterAudit=auditAllSites(optSites,afterNetwork,cfg);
-      const rRows=buildResultRows(optSites,auditResult,optOutput,optWhat,baseCells,cfg);
+      // Result rows, ranked by conflict weight removed (apply from the top)
+      const rows=[];
+      optSites.forEach(site=>{
+        const beforeSite=auditResult.siteAudits.find(a=>a.siteName===site.name);
+        const afterSite=afterAudit.siteAudits.find(a=>a.siteName===site.name);
+        site.sectors.forEach((sec,idx)=>{
+          const key=sec.cellName||`${site.name}_S${idx+1}`;
+          const i=movByCell.get(key);
+          const f=i!==undefined?finalOf[i]:null;
+          const b4=beforeSite?.sectorAudits[idx], af=afterSite?.sectorAudits[idx];
+          const oldTch=(sec.tchList||[]).map(Number).filter(v=>!isNaN(v)).sort((x,y)=>x-y);
+          const newTch=f?f.tch:oldTch;
+          const bsicBenefit=(b4?.bsicConflict&&!af?.bsicConflict)?5:0;
+          const newNcc=f?f.ncc:sec.ncc, newBcc=f?f.bcc:sec.bcc;
+          rows.push({
+            BCF:site.name, Segment:sec.cellName||`S${idx+1}`, Azimuth:Math.round(parseFloat(sec.azimuth)||0),
+            Old_BCCH:sec.bcch??'', New_BCCH:(f?f.bcch:sec.bcch)??'',
+            BCCH_Changed:f&&f.bcch!==sec.bcch?'YES':'NO',
+            Old_TCH:oldTch.join(' '), New_TCH:newTch.join(' '),
+            TCH_Changed:f&&newTch.join(',')!==oldTch.join(',')?'YES':'NO',
+            Old_BSIC:sec.ncc!=null&&sec.bcc!=null?`${sec.ncc}/${sec.bcc}`:'',
+            New_BSIC:newNcc!=null&&newBcc!=null?`${newNcc}/${newBcc}`:'',
+            BSIC_Changed:f&&(f.ncc!==sec.ncc||f.bcc!==sec.bcc)?'YES':'NO',
+            BSIC_Change_Type:f?f.changeType:'',
+            Old_BCCH_Mode:b4?.bcchMode||'', New_BCCH_Mode:af?.bcchMode||'',
+            Old_BSIC_Sep_km:b4?.bsicRepeatDist!=null?Math.round(b4.bsicRepeatDist*10)/10:'∞',
+            New_BSIC_Sep_km:af?.bsicRepeatDist!=null?Math.round(af.bsicRepeatDist*10)/10:'∞',
+            Conflict_Weight_Removed:f?Math.round((f.benefit+bsicBenefit)*10)/10:0,
+          });
+        });
+      });
+      rows.sort((a,b)=>b.Conflict_Weight_Removed-a.Conflict_Weight_Removed
+        ||((b.BCCH_Changed==='YES')-(a.BCCH_Changed==='YES')));
+
       setAfterSummary(afterAudit.summary);
-      setResults(optOutput);
-      setResultRows(rRows);
+      setResults(finalOf);
+      setResultRows(rows);
       setStep(4);
     } catch(ex){
       setErr("Optimization error: "+(ex?.message||ex));
-    } finally{setPlanning(false);}
+    } finally{ setPlanning(false); }
   };
 
   const pct=prog.total>0?Math.min(100,Math.round(prog.done/prog.total*100)):0;
@@ -1220,7 +995,8 @@ function App() {
           <div style={{flex:1,minWidth:280}}>
             <div style={{fontSize:18,fontWeight:1000}}>2G Frequency Optimizer</div>
             <div className="small" style={{marginTop:6}}>
-              Audits the current BCCH / BSIC / TCH plan of existing sites and suggests frequency changes to resolve conflicts.
+              Audits the current BCCH / BSIC / TCH plan and computes a <b>minimal set of changes</b> that removes the most interference.
+              Deterministic interference-graph solver — only strictly improving changes are made, ranked by benefit.
             </div>
           </div>
           <Steps current={step}/>
@@ -1296,14 +1072,6 @@ function App() {
             </div>
           </div>
 
-          {/* Iteration recommendation */}
-          {iterRec&&(
-            <div className="rec-box">
-              <div style={{fontWeight:700,marginBottom:4}}>Iteration recommendation</div>
-              <div className="small">{iterRec.reason}</div>
-            </div>
-          )}
-
           {/* Optimization settings */}
           <div className="card">
             <div style={{fontWeight:800,fontSize:14,marginBottom:14}}>Optimization settings</div>
@@ -1323,9 +1091,8 @@ function App() {
                 </div>
               </div>
               <div>
-                <div className="label">Planning passes</div>
-                <input className="mono" style={{maxWidth:100}} value={optPasses} onChange={e=>setOptPasses(e.target.value)}/>
-                <div className="small" style={{marginTop:4}}>Recommended: {iterRec?.passes||3}</div>
+                <div className="label">Solver</div>
+                <div className="small">Deterministic interference-graph solver: only strictly improving changes are applied, so the plan can never get worse. Untouched sectors stay exactly as they are; results are ranked by conflict weight removed.</div>
               </div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:16,alignItems:"center"}}>
@@ -1334,18 +1101,16 @@ function App() {
                 {planning?"Optimizing…":"Optimize →"}
               </button>
               {planning&&<span className="small mono" style={{marginLeft:6}}>
-                {prog.totalPasses>1?`Pass ${prog.pass}/${prog.totalPasses} · `:""}
-                {pct}% ({prog.done}/{prog.total})
+                {`Phase ${prog.pass}/${prog.totalPasses} · `}{pct}%
               </span>}
             </div>
             {planning&&(
               <div className="progressWrap" style={{marginTop:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                   <div className="small">
-                    {prog.totalPasses>1&&<><b>Pass {prog.pass}/{prog.totalPasses}</b> · </>}
-                    Site <b className="mono">{Math.min(prog.done+1,prog.total)}</b> / <b className="mono">{prog.total}</b>
+                    <b>Phase {prog.pass}/{prog.totalPasses}</b>
                     {prog.siteName?<> · <b>{prog.siteName}</b></>:null}
-                    {prog.pass>1&&prog.locked>0?<> · <b>{prog.locked}</b> locked</>:null}
+                    {prog.total>0?<> · <span className="mono">{prog.done}/{prog.total}</span></>:null}
                   </div>
                   <div className="small mono">{pct}%</div>
                 </div>
@@ -1448,12 +1213,14 @@ function App() {
             </table>
           </div>
           <div className="card" style={{marginTop:12}}>
-            <div style={{fontWeight:900,marginBottom:6}}>BSIC Change Types</div>
+            <div style={{fontWeight:900,marginBottom:6}}>How to read the results</div>
             <div className="small">
-              <b>none</b> = no change needed / already clean &nbsp;·&nbsp;
-              <b>ncc_only</b> = only NCC changed, BCC kept &nbsp;·&nbsp;
-              <b>ncc_and_bcc</b> = both NCC and BCC changed (NCC-only was not sufficient) &nbsp;·&nbsp;
-              <b>impossible</b> = no valid (NCC,BCC) found — current values kept
+              Rows are ranked by <b>Conflict Weight Removed</b> — the interference weight this sector's changes eliminate
+              (T1 co-channel ≈ 10, T2 ≈ 1, adjacent-channel and TCH terms scaled accordingly). Apply changes from the top;
+              stop when the benefit becomes negligible. Sectors with 0 were already clean or could not be improved.<br/>
+              <b>BSIC change types:</b> <b>none</b> = kept &nbsp;·&nbsp; <b>ncc_only</b> = NCC changed, BCC kept &nbsp;·&nbsp;
+              <b>bcc_only</b> = BCC changed, NCC kept &nbsp;·&nbsp; <b>ncc_and_bcc</b> = both changed &nbsp;·&nbsp;
+              <b>impossible</b> = no clean (NCC,BCC) exists — best-separation pair kept
             </div>
           </div>
         </div>
