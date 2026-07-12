@@ -547,7 +547,7 @@ function planOneSite(site, workingCells, cfg) {
   // sector's footprint, scored Σ 1/d(border pixel → site) — long borders AND close borders
   // rank higher. T2 = cells whose footprint borders a T1 footprint. Cells co-located with
   // this site (<50 m) are intra-site and excluded as competitors.
-  const GRID_N=160, GRID_CAND_MAX=400, CI_SAMPLES=600;
+  const GRID_CAND_MAX=400, CI_SAMPLES=600;
   const gridR=Math.max(2,(cfg.searchRadius||10)*1.2);
   const kx=111.320*Math.cos(lat*Math.PI/180), ky=110.574;
   const extCand=workingCells
@@ -568,6 +568,13 @@ function planOneSite(site, workingCells, cfg) {
     if(g) g.members.push(e);
     else coGroups.push({x:e.x,y:e.y,az:eaz,members:[e]});
   });
+  // Automatic grid resolution: pixel size targets ~1/10 of the nearest external site's
+  // distance, so even the smallest first-ring footprint spans several pixels and its borders
+  // are stable. Clamped to a 25–150 m pixel and a 160–320 grid: dense urban clusters get a
+  // fine grid automatically, sparse rural networks keep the cheap coarse one.
+  const nearestKm = extCand.length ? Math.sqrt(extCand[0].x*extCand[0].x + extCand[0].y*extCand[0].y) : gridR;
+  const pixKm = Math.min(0.15, Math.max(0.025, nearestKm/10));
+  const GRID_N = Math.max(160, Math.min(320, Math.ceil(2*gridR/pixKm)));
   const nOwn=sectors.length, nCand=nOwn+coGroups.length;
   // flat candidate arrays: own sectors first (index 0..nOwn-1), then external cell GROUPS
   const gcAz=new Float64Array(nCand), gcX=new Float64Array(nCand), gcY=new Float64Array(nCand);
@@ -1380,7 +1387,7 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
       t1:fd.t1Ext.map(e=>({...e.ext.c,borderPx:e.borderPx})),
       t2:fd.t2Ext.map(e=>e.ext.c),
       selName:`${selSite.site.name}_S${selSec.idx+1}`,selSiteName:selSite.site.name,
-      selPx:fd.fpCount,beamWidth:HP,gridR:R,
+      selPx:fd.fpCount,beamWidth:HP,gridR:R,gridN:N,
     };
   },[bsOn,results,activeSite,activeTab]);
 
@@ -1649,7 +1656,7 @@ function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,
             </div>
             <div style={{fontSize:'11px',color:'var(--color-text-tertiary)',marginTop:'6px',borderTop:'0.5px solid var(--color-border-tertiary)',paddingTop:'6px'}}>
               Model: RSL = −35·log₁₀(d) + G(θ) · G = −min(25, 12·(θ/{bs.beamWidth})²) dB · uniform power/height, no terrain ·
-              overlay: <b style={{color:'var(--nokia-blue)'}}>blue</b> = this sector's footprint, solid = T1, faint = T2, faintest = others · grid ±{bs.gridR.toFixed(0)} km
+              overlay: <b style={{color:'var(--nokia-blue)'}}>blue</b> = this sector's footprint, solid = T1, faint = T2, faintest = others · grid ±{bs.gridR.toFixed(0)} km · {bs.gridN}×{bs.gridN} px · pixel ≈ {Math.round(2*bs.gridR/bs.gridN*1000)} m (auto)
             </div>
           </div>
       )}

@@ -586,6 +586,7 @@ A separate next-generation build of the 2G planner — the original file is unto
 - **Co-location grouping:** co-sited cells with the same azimuth (dual-band 900+1800 twins) compete as ONE radiator, then every member cell inherits the group's tier and score — previously the tie-winner took the whole footprint and the twin vanished from the neighbour model entirely.
 - **Neighbour count rule:** ALL T1 are always kept (even above the max-neighbours setting, even beyond the search radius); T2 within the search radius fills the remaining slots by rank.
 - **Map:** a "Best-server footprints" toggle renders the *exact* grid the engine planned with (stored per site, not recomputed) — what you see is what was used.
+- **Automatic grid resolution:** pixel size targets ~1/10 of the nearest external site's distance (clamped 25–150 m pixel, 160–320 grid) — dense urban clusters automatically get a fine grid so thin footprint borders classify stably; sparse rural networks keep the cheap coarse grid. The map panel shows the grid size and effective pixel in metres.
 
 **C/I-based BCCH selection:** candidates are ranked by the worst-decile carrier-to-interference across the sector's own footprint pixels (strongest co-channel interferer, adjacent channel with 18 dB ACI protection) instead of an angular-overlap heuristic. The clean → t2_reuse → t1_reuse → forced tier structure and the BSIC-radius logic are unchanged.
 
