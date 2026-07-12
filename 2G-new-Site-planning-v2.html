@@ -1,0 +1,2213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2G Frequency Planner v2</title>
+  <!-- CDN libraries — internet connection required on first load.
+       OFFLINE FALLBACK: download these files and place alongside this HTML:
+         react.production.min.js     → https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js
+         react-dom.production.min.js → https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js
+         babel.min.js                → https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js
+         xlsx.bundle.js              → https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js
+       Then replace each src= URL above with the local filename. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"
+    onerror="document.getElementById('cdn-err').style.display='block'"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    :root {
+      /* Nokia brand palette */
+      --nokia-blue:       #005AFF;
+      --nokia-dark-blue:  #001E82;
+      --nokia-cyan:       #00B8F1;
+      --nokia-navy:       #00137F;
+      --nokia-light:      #E8F0FE;
+      /* Semantic */
+      --color-background-primary:   #ffffff;
+      --color-background-secondary: #F2F4F8;
+      --color-background-tertiary:  #F8F9FC;
+      --color-background-info:      #E8F0FE;
+      --color-background-success:   #E6F4EA;
+      --color-background-warning:   #FEF7E0;
+      --color-background-danger:    #FCE8E8;
+      --color-text-primary:   #0D1B2A;
+      --color-text-secondary: #4A5568;
+      --color-text-tertiary:  #8A96A8;
+      --color-text-info:      #001E82;
+      --color-text-success:   #1E6E34;
+      --color-text-warning:   #7A4F00;
+      --color-text-danger:    #9B2020;
+      --color-border-tertiary:  #E2E8F0;
+      --color-border-secondary: #C8D0DC;
+      --color-border-primary:   #A0AABC;
+      --color-border-info:      #7BA7F5;
+      --color-border-success:   #6AC47A;
+      --color-border-warning:   #F0B429;
+      --color-border-danger:    #F08080;
+      --border-radius-md: 6px;
+      --border-radius-lg: 10px;
+      --border-radius-xl: 14px;
+      --shadow-sm: 0 1px 3px rgba(0,30,130,0.08), 0 1px 2px rgba(0,30,130,0.04);
+      --shadow-md: 0 4px 12px rgba(0,30,130,0.10), 0 2px 4px rgba(0,30,130,0.06);
+      --font-mono: 'Courier New', 'Lucida Console', monospace;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: var(--font-sans); font-size: 14px;
+      color: var(--color-text-primary);
+      background: var(--color-background-secondary);
+      margin: 0; -webkit-font-smoothing: antialiased;
+    }
+    #cdn-err {
+      display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: #9B2020; color: white; text-align: center; padding: 14px 20px;
+      font-family: sans-serif; font-size: 14px; line-height: 1.5;
+    }
+    /* Top nav bar */
+    #nokia-header {
+      background: linear-gradient(135deg, var(--nokia-dark-blue) 0%, var(--nokia-navy) 60%, #001560 100%);
+      color: white; padding: 0 32px; display: flex; align-items: center;
+      justify-content: space-between; height: 56px;
+      box-shadow: 0 2px 8px rgba(0,20,100,0.35);
+    }
+    #nokia-header .brand { display: flex; align-items: center; gap: 16px; }
+    #nokia-header .nokia-wordmark {
+      font-size: 22px; font-weight: 700; letter-spacing: 4px;
+      color: white; text-transform: uppercase; line-height: 1;
+    }
+    #nokia-header .divider { width: 1px; height: 24px; background: rgba(255,255,255,0.25); }
+    #nokia-header .tool-name { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); letter-spacing: 0.3px; }
+    #nokia-header .author-tag { font-size: 11px; color: rgba(255,255,255,0.55); letter-spacing: 0.2px; }
+    /* Main content */
+    #root { max-width: 1240px; margin: 0 auto; padding: 28px 28px 64px; min-height: calc(100vh - 56px); }
+    input, select {
+      font-family: var(--font-sans); font-size: 13px; color: var(--color-text-primary);
+      background: white; border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md); padding: 7px 11px; outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus {
+      border-color: var(--nokia-blue);
+      box-shadow: 0 0 0 3px rgba(0,90,255,0.12);
+    }
+    button {
+      font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+      color: var(--color-text-secondary);
+      background: white; border: 1px solid var(--color-border-secondary);
+      border-radius: var(--border-radius-md); padding: 8px 18px; cursor: pointer;
+      transition: all 0.15s; box-shadow: var(--shadow-sm);
+    }
+    button:hover { background: var(--color-background-secondary); border-color: var(--color-border-primary); box-shadow: var(--shadow-md); }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+    /* Primary action button */
+    button.primary {
+      background: var(--nokia-blue); color: white;
+      border-color: var(--nokia-blue); box-shadow: 0 2px 8px rgba(0,90,255,0.30);
+    }
+    button.primary:hover { background: #0048CC; border-color: #0048CC; box-shadow: 0 4px 14px rgba(0,90,255,0.40); }
+    strong { font-weight: 600; }
+    .lf-tip { font-size:11px; font-family: var(--font-mono); }
+    .leaflet-popup-content { font-family: var(--font-mono); margin: 10px 14px; }
+    h2 { color: var(--color-text-primary); line-height: 1.4; font-weight: 600; }
+    p { line-height: 1.6; }
+    th { white-space: nowrap; }
+    /* Page footer */
+    #page-footer {
+      text-align: center; padding: 20px; margin-top: 48px;
+      font-size: 11px; color: var(--color-text-tertiary);
+      border-top: 1px solid var(--color-border-tertiary);
+    }
+    /* Step pill badges */
+    .steps { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .step {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+      border-radius: 999px; border: 1px solid var(--color-border-tertiary);
+      background: white; font-size: 12px; color: var(--color-text-secondary);
+    }
+    .step .dot {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800; flex-shrink: 0;
+      background: var(--nokia-light); color: var(--nokia-dark-blue);
+    }
+    .step.active { border-color: rgba(0,90,255,.35); color: var(--color-text-primary); }
+    .step.active .dot { background: rgba(0,90,255,.15); color: var(--nokia-blue); }
+    .step.done { background: var(--color-background-success); border-color: var(--color-border-success); cursor: pointer; }
+    .step.done .dot { background: rgba(30,110,52,.15); color: var(--color-text-success); }
+    .bs-overlay { image-rendering: pixelated; }
+  </style>
+</head>
+<body>
+  <div id="cdn-err">
+    ⚠ One or more required libraries failed to load from CDN. Check your internet connection,
+    or download the JS files locally — see the comment in the &lt;head&gt; for instructions.
+  </div>
+  <div id="nokia-header">
+    <div class="brand">
+      <span class="tool-name">2G Frequency Planner v2</span>
+    </div>
+    <span class="author-tag">by Ankit Jain</span>
+  </div>
+  <div id="root"></div>
+  <div id="page-footer">
+    2G Frequency Planner v2 &nbsp;·&nbsp; Author: <strong>Ankit Jain</strong>
+    &nbsp;·&nbsp; Independent personal project — not affiliated with or endorsed by any company.
+  </div>
+  <script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+// ── Geo math ──────────────────────────────────────────────────────────────────
+const toRad = d => d * Math.PI / 180;
+const toDeg = r => r * 180 / Math.PI;
+const haversineKm = (a,b,c,d) => {
+  const R=6371,dLat=toRad(c-a),dLon=toRad(d-b);
+  const x=Math.sin(dLat/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+};
+const compassBearing = (la1,lo1,la2,lo2) => {
+  const dL=toRad(lo2-lo1),y=Math.sin(dL)*Math.cos(toRad(la2));
+  const x=Math.cos(toRad(la1))*Math.sin(toRad(la2))-Math.sin(toRad(la1))*Math.cos(toRad(la2))*Math.cos(dL);
+  return (toDeg(Math.atan2(y,x))+360)%360;
+};
+const angleDiff = (a,b) => Math.min(Math.abs(((a-b+180+360)%360)-180),180);
+const DIR=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const dirLabel = az => DIR[Math.round(az/22.5)%16];
+let _uid=0; const uid = ()=>++_uid;
+
+// ── File reading ──────────────────────────────────────────────────────────────
+const readBuf = file => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsArrayBuffer(file); });
+
+async function parseFile(file, preferredSheet) {
+  const buf = await readBuf(file);
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext==="csv"||ext==="txt") return parseCSVText(new TextDecoder().decode(buf));
+  const wb = XLSX.read(buf,{type:"array",cellDates:true});
+  const sn = pickSheet(wb.SheetNames,preferredSheet);
+  const json = XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:"",raw:false});
+  const headers = json.length?Object.keys(json[0]):[];
+  const rows = json.map(row=>{const o={};Object.entries(row).forEach(([k,v])=>{o[k]=String(v).trim();});return o;});
+  return {headers,rows,sheetName:sn,allSheets:wb.SheetNames};
+}
+
+function pickSheet(names,preferred) {
+  if (preferred) { const c=names.find(n=>n.toLowerCase()===preferred.toLowerCase()); if(c) return c; const p=names.find(n=>n.toLowerCase().includes(preferred.toLowerCase())); if(p) return p; }
+  const norm=s=>s.toLowerCase().replace(/\s/g,"");
+  return names.find(n=>norm(n)==="celldetails")||names.find(n=>norm(n).includes("cell")&&norm(n).includes("detail"))||names.find(n=>norm(n).includes("cell"))||names[0];
+}
+
+function parseCSVText(text) {
+  const clean=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").trim();
+  const first=clean.split("\n")[0];
+  const sep=first.split(";").length>first.split(",").length?";":",";
+  const split=line=>{ if(sep===";") return line.split(";").map(v=>v.trim().replace(/^"|"$/g,""));
+    const v=[]; let q=false,c=""; for(const ch of line){if(ch==='"'){q=!q;continue;}if(ch===","&&!q){v.push(c.trim());c="";continue;}c+=ch;} v.push(c.trim()); return v; };
+  const lines=clean.split("\n"); const headers=split(lines[0]);
+  const rows=lines.slice(1).filter(l=>l.trim()).map(l=>{const v=split(l);const o={};headers.forEach((h,i)=>{o[h]=(v[i]||"").trim();});return o;});
+  return {headers,rows,sheetName:null,allSheets:[]};
+}
+
+// ── Column detection ──────────────────────────────────────────────────────────
+const norm = s => s.toLowerCase().replace(/[\s_\-\.]/g,"");
+const findCol = (headers,pats) => { const h=headers.map(norm); for(const p of pats){const i=h.findIndex(x=>x.includes(norm(p)));if(i>=0)return headers[i];} return ""; };
+
+const detectGISCols = h => ({
+  siteName: findCol(h,["sitename","siteid","site_name","site","btsname"]),
+  cellName: findCol(h,["cellname","cellid","cell_name","cell","bscell","bts"]),
+  lat:      findCol(h,["lat","latitude","y_coord","ylat"]),
+  lon:      findCol(h,["lon","lng","longitude","x_coord","xlon"]),
+  azimuth:  findCol(h,["azimuth","bearing","direction","az","dir"]),
+});
+const detectParamCols = h => ({
+  cellName: findCol(h,["cellname","bscell","cell_name","cellid","cell","bts"]),
+  bcch:     findCol(h,["bcch","bccharfcn","bcch_arfcn","bcchan","arfcn"]),
+  tch:      findCol(h,["malist","ma_list","tchlist","frequencyhoppingarfcns","hopfreq","tchfreq","tch","freqlist"]),
+  ncc:      findCol(h,["ncc","networkcolour","networkcolor"]),
+  bcc:      findCol(h,["bcc","basecolour","basecolor"]),
+  bsic:     findCol(h,["bsic","basestationidentity"]),
+  lac:      findCol(h,["lac","locationareacode","location_area","locationarea"]),
+  rac:      findCol(h,["rac","routingareacode","routing_area","routingarea"]),
+  bsc:      findCol(h,["bsc","bscname","bsc_name","bscid","bsc_id","btscontroller"]),
+});
+const detectNewSitesCols = h => ({
+  siteName: findCol(h,["sitename","site_name","name","site"]),
+  siteId:   findCol(h,["siteid","site_id","id"]),
+  lat:      findCol(h,["lat","latitude","y_coord","ylat","y"]),
+  lon:      findCol(h,["lon","lng","longitude","x_coord","xlon","x"]),
+  azimuth:  findCol(h,["azimuth","bearing","az","direction"]),
+  trx900:   findCol(h,["trx900","trx_900","900trx","trx9","900"]),
+  trx1800:  findCol(h,["trx1800","trx_1800","1800trx","trx18","1800"]),
+});
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function shuffle(arr) {
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+
+// ── ARFCN pool helpers ────────────────────────────────────────────────────────
+function parseARFCNList(str) {
+  if (!str||!str.trim()) return [];
+  const result=new Set();
+  for(const tok of String(str).trim().split(/[\s,;]+/)){
+    const rng=tok.match(/^(\d+)\s*(?:-|\.\.)\s*(\d+)$/);
+    if(rng){const lo=Math.min(+rng[1],+rng[2]),hi=Math.max(+rng[1],+rng[2]);for(let a=lo;a<=hi;a++)result.add(a);}
+    else{const n=parseInt(tok,10);if(!isNaN(n))result.add(n);}
+  }
+  return [...result].sort((a,b)=>a-b);
+}
+function arfcnListToStr(arr) {
+  if(!arr.length) return ""; const p=[]; let lo=arr[0],hi=arr[0];
+  for(let i=1;i<=arr.length;i++){if(arr[i]===hi+1){hi=arr[i];continue;}p.push(lo===hi?`${lo}`:`${lo}-${hi}`);lo=hi=arr[i];}
+  return p.join(", ");
+}
+const getBcchPool = bd => parseARFCNList(bd?.bcchStr||"");
+const getTchPool  = bd => parseARFCNList(bd?.tchStr||"");
+
+// ── New sites CSV → planned sites ─────────────────────────────────────────────
+function buildPlannedSites(rows, m) {
+  const siteMap=new Map();
+  rows.forEach(row=>{
+    const name=(row[m.siteName]||"").trim(); if(!name) return;
+    const lat=parseFloat(row[m.lat]),lon=parseFloat(row[m.lon]);
+    if(isNaN(lat)||isNaN(lon)) return;
+    const az=parseFloat(row[m.azimuth])||0;
+    const trx900=parseInt(row[m.trx900])||0;
+    const trx1800=parseInt(row[m.trx1800])||0;
+    const siteId=(m.siteId&&row[m.siteId]?.trim())||name;
+    if(!siteMap.has(name)) siteMap.set(name,{id:uid(),name,siteId,lat,lon,sectors:[]});
+    siteMap.get(name).sectors.push({azimuth:az,trx900,trx1800});
+  });
+  return [...siteMap.values()];
+}
+
+// ── Optimal TCH selection ─────────────────────────────────────────────────────
+// Enumerates all C(pool,count) combinations that satisfy the minSep constraint
+// and returns one chosen uniformly at random using reservoir sampling — no ARFCN
+// ordering bias, no distance objective, every valid combo equally likely.
+// Falls back to spreadSelect when the combination space exceeds 60,000.
+function optimalTCHSelect(pool, count, minSep) {
+  const sorted = [...new Set(pool)].sort((a,b)=>a-b);
+  if (!sorted.length || !count) return [];
+
+  // Combinatorial size guard: C(n,k) — avoid n choose k > 60000
+  let cn=1; for(let i=0;i<count;i++) cn=cn*(sorted.length-i)/(i+1);
+  if (cn > 60000) return spreadSelect(pool, count, minSep);
+
+  // Reservoir sampling: as each valid combo is found (1-indexed at `seen`),
+  // replace the current choice with probability 1/seen.
+  // Result is a perfectly uniform random draw over all valid combos.
+  let chosen=null, seen=0;
+  function search(start, sel) {
+    if (sel.length === count) {
+      seen++;
+      if (Math.random() < 1/seen) chosen=[...sel];
+      return;
+    }
+    if (sorted.length - start < count - sel.length) return; // prune
+    for (let i=start; i<sorted.length; i++) {
+      if (sel.length>0 && sorted[i]-sel[sel.length-1] < minSep) continue;
+      search(i+1, [...sel, sorted[i]]);
+    }
+  }
+  search(0, []);
+  return chosen ?? [];
+}
+
+// ── Spread selection ──────────────────────────────────────────────────────────
+function spreadSelect(pool, count, minSep=1) {
+  // minSep=1 means no two selected freqs can be identical (normal)
+  // minSep=2 means no two selected freqs can be adjacent (strict intra-sector rule)
+  if (!pool.length) return [];
+  const eligible = (a, sel) => !sel.includes(a) && sel.every(s => Math.abs(a-s) >= minSep);
+  // Start from a random position in the pool to avoid low-ARFCN bias in the fallback path.
+  const randomStart = Math.floor(Math.random() * pool.length);
+  const rotated = [...pool.slice(randomStart), ...pool.slice(0, randomStart)];
+  const firstEligible = rotated.find(a => eligible(a, [])) ?? pool[0];
+  const sel = [firstEligible];
+  while (sel.length < count) {
+    let best=null, bd=-1;
+    for (const a of pool) {
+      if (!eligible(a, sel)) continue;
+      const d = Math.min(...sel.map(s=>Math.abs(a-s)));
+      if (d>bd) { bd=d; best=a; }
+    }
+    if (best!==null) sel.push(best); else break;
+  }
+  return sel.sort((a,b)=>a-b);
+}
+
+// ── TCH planner (shared for 900 and 1800) ────────────────────────────────────
+function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTCH, tier1Cells) {
+  // siteRegTCH    = TCHs already assigned to OTHER sectors of this site
+  // sameSectorTCH = TCHs already assigned to THIS sector in earlier round-robin rounds
+  // tier1Cells    = effective T1 neighbours — their TCH ±1 is soft-avoided (first pass only)
+  sameSectorTCH = sameSectorTCH || [];
+  if (!count || !tchPool.length) return {list:[], mode:"n/a"};
+  // Intra-sector ACI hard constraint: same-sector previously assigned TCHs and their
+  // ±1 adjacencies must never appear again — minSep=2 within the same TRX chain.
+  // Pre-filter the entire pool so this is never relaxed by any cascade pass.
+  if (sameSectorTCH.length) {
+    const sameSecExclude = new Set();
+    sameSectorTCH.forEach(t => { sameSecExclude.add(t-1); sameSecExclude.add(t); sameSecExclude.add(t+1); });
+    tchPool = tchPool.filter(a => !sameSecExclude.has(a));
+    if (!tchPool.length) return {list:[], mode:"impossible"};
+  }
+  tchPool = shuffle(tchPool); // randomize pool order (benefits spreadSelect fallback; optimalTCHSelect re-sorts internally)
+  const tchPoolSet = new Set(tchPool);
+
+  // Expand inSiteBCCHSet to include ±1 — BCCH/TCH adjacency within same site must be avoided
+  const inSiteBCCHAdj = new Set(inSiteBCCHSet);
+  inSiteBCCHSet.forEach(b => { inSiteBCCHAdj.add(b-1); inSiteBCCHAdj.add(b+1); });
+
+  // Neighbour TCHs from external cells (same band)
+  const nbTCH = new Set();
+  scored.forEach(c=>(c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n))nbTCH.add(n);}));
+
+  // ±1 of T1 neighbours' TCHs — external adjacent-channel interference toward the strongest
+  // neighbours (was ignored entirely; only intra-site/intra-sector ACI was protected).
+  const t1Adj = new Set();
+  (tier1Cells||[]).forEach(c=>(c.tchList||[]).forEach(t=>{
+    const n=Number(t); if(!isNaN(n)){ t1Adj.add(n-1); t1Adj.add(n+1); }
+  }));
+
+  // Hard forbidden: neighbour TCHs + in-site BCCHs (±1) + other-sector TCHs (no repetition)
+  const otherSectorTCH = new Set(siteRegTCH);
+  const hardForbid = new Set([...nbTCH, ...inSiteBCCHAdj, ...otherSectorTCH]);
+
+  // Soft forbidden: adjacent to OTHER sectors' TCHs (ok as last resort across sectors)
+  const otherSectorAdj = new Set();
+  siteRegTCH.forEach(t=>{ otherSectorAdj.add(t-1); otherSectorAdj.add(t+1); });
+
+  // Build candidate pools
+  const poolA = []; // ideal: clean from nb conflicts AND not adj to other-sector TCHs
+  const poolB = []; // relaxed: clean from nb conflicts, may be adj to other-sector TCHs
+  for (const a of tchPool) {
+    if (hardForbid.has(a)) continue;
+    if (!otherSectorAdj.has(a)) poolA.push(a);
+    poolB.push(a);
+  }
+
+  // intra-sector adjacency (minSep=2) is NEVER relaxed — adjacent freqs in same cell cause ACI
+  let list=[], mode="clean";
+  // poolC: nb conflict OK, but still avoids intra-site exact reuse AND cross-sector adjacency
+  const poolC = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a) && !otherSectorAdj.has(a));
+  // poolD: nb conflict OK, cross-sector adj OK, no exact intra-site TCH reuse
+  const poolD = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
+  // poolE: exact intra-site TCH reuse allowed, but still avoids cross-sector adjacency
+  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorAdj.has(a));
+  // poolF: last resort — exact reuse AND cross-sector adj both allowed; only BCCH adjacency still blocked
+  const poolF = tchPool.filter(a => !inSiteBCCHAdj.has(a));
+
+  // First choice: poolA additionally cleared of ±1 of any T1 neighbour's TCH.
+  const poolA1 = t1Adj.size ? poolA.filter(a => !t1Adj.has(a)) : poolA;
+  list = optimalTCHSelect(poolA1, count, 2);
+  if (list.length >= count) { mode="clean"; }
+  else {
+    if (poolA1 !== poolA) {
+      const listA = optimalTCHSelect(poolA, count, 2);
+      if (listA.length >= list.length) { list=listA; mode=listA.length>=count?"t1_adj":"partial"; }
+    }
+    if (list.length < count) {
+      const listB = optimalTCHSelect(poolB, count, 2);
+      if (listB.length >= list.length) { list=listB; mode=listB.length>=count?"site_adj":"partial"; }
+    }
+    if (list.length < count) {
+      const listC = optimalTCHSelect(poolC, count, 2);
+      if (listC.length > list.length) { list=listC; mode=listC.length>=count?"nb_reuse":"partial"; }
+    }
+    if (list.length < count) {
+      const listD = optimalTCHSelect(poolD, count, 2);
+      if (listD.length > list.length) { list=listD; mode=listD.length>=count?"nb_reuse_adj":"partial"; }
+    }
+    if (list.length < count) {
+      const listE = optimalTCHSelect(poolE, count, 2);
+      if (listE.length > list.length) { list=listE; mode=listE.length>=count?"site_reuse":"partial"; }
+    }
+    if (list.length < count) {
+      const listF = spreadSelect(poolF, count, 2);
+      if (listF.length > list.length) { list=listF; mode="reuse"; }
+    }
+  }
+
+  list.forEach(t=>siteRegTCH.push(t));
+  return {list, mode};
+}
+
+// ── Cell-to-cell beam overlap (used by BFS tier assignment) ──────────────────
+function cellOverlap(la1,lo1,az1,la2,lo2,az2,bw) {
+  const dist=haversineKm(la1,lo1,la2,lo2);
+  if(dist<0.05) return {fwdS:0,revS:0};
+  const bear=compassBearing(la1,lo1,la2,lo2);
+  return {
+    fwdS:Math.max(0,1-angleDiff(bear,az1)/bw),
+    revS:Math.max(0,1-angleDiff((bear+180)%360,az2)/bw)
+  };
+}
+
+// ── Planning engine ───────────────────────────────────────────────────────────
+function planOneSite(site, workingCells, cfg) {
+  const {lat,lon,sectors}=site;
+  const {nccStr,bands,beamWidth}=cfg;
+  // dist/bear from the site to every working cell computed ONCE and reused by every sector,
+  // the LAC/RAC/BSC vote and the BSIC pool (previously recomputed per sector via haversine).
+  const geo = workingCells.map(c =>
+    (isNaN(c.lat)||isNaN(c.lon)) ? null :
+    { dist: haversineKm(lat,lon,c.lat,c.lon), bear: compassBearing(lat,lon,c.lat,c.lon) });
+  const nccPool=parseARFCNList(nccStr||"0-7").filter(n=>n>=0&&n<=7);
+  const band900=bands[0], band1800=bands[1]; // first = 900 (BCCH+TCH), second = 1800 (TCH only for dual)
+  const allBand900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+  const allBand1800=new Set(band1800?[...getBcchPool(band1800),...getTchPool(band1800)]:[]);
+
+  // Intra-site register — pre-seeded with any EXISTING cells at the same physical location
+  // (dist < 0.05 km) so their BCCHs/TCHs are treated as already-used intra-site frequencies.
+  const siteReg={bcch:[],tch900:[],tch1800:[]};
+  workingCells.forEach((c,ci)=>{
+    if(!geo[ci]||geo[ci].dist>=0.05) return;
+    const b=Number(c.bcch); if(!isNaN(b)) siteReg.bcch.push(b);
+    (c.tchList||[]).forEach(t=>{
+      const n=Number(t); if(isNaN(n)) return;
+      if(allBand1800.has(n)) siteReg.tch1800.push(n); else siteReg.tch900.push(n);
+    });
+  });
+
+  // ── Site-level LAC / RAC / BSC (same value applied to every sector) ─────────
+  // Lazily computed on first use — by then the best-server footprints (footData) exist,
+  // and the vote pools the real T1 neighbours instead of a radius+overlap heuristic.
+  const lrbOf = (() => {
+    let v = null;
+    const compute = () => {
+    const lrbKey = c => `${c.lac}|${c.rac}|${c.bsc}`;
+    const majorityVote = (cands) => {
+      if (!cands.length) return {lac:null, rac:null, bsc:null};
+      const tally = new Map();
+      cands.forEach(c => {
+        const k = lrbKey(c);
+        if (!tally.has(k)) tally.set(k, {count:0, dist:c.dist||0, c});
+        const v = tally.get(k); v.count++;
+        if ((c.dist||0) < v.dist) { v.dist = c.dist||0; v.c = c; }
+      });
+      const best = [...tally.values()].sort((a,b) => b.count - a.count || a.dist - b.dist)[0];
+      return {lac:best.c.lac, rac:best.c.rac, bsc:best.c.bsc};
+    };
+
+    // Case 1: existing sectors at same physical location → inherit their LAC/RAC/BSC
+    const coSite = workingCells.filter((c,ci) =>
+      geo[ci] && geo[ci].dist < 0.05 &&
+      (c.lac != null || c.rac != null || c.bsc != null)
+    );
+    if (coSite.length) return majorityVote(coSite);
+
+    // Case 2: new site → pool the best-server T1 neighbours of ALL sectors combined
+    const pooled = [];
+    footData.forEach(fd => fd.t1Ext.forEach(({ext}) => {
+      const c = ext.c;
+      if (c.lac == null && c.rac == null && c.bsc == null) return;
+      pooled.push({...c, dist: geo[ext.ci].dist});
+    }));
+    if (pooled.length) return majorityVote(pooled);
+
+    // Case 3: no T1 neighbours found — inherit from the nearest cell with LAC/RAC/BSC,
+    // regardless of search radius or beam overlap.
+    const nearest = workingCells
+      .map((c,ci) => geo[ci] && geo[ci].dist >= 0.05 &&
+                     (c.lac != null || c.rac != null || c.bsc != null)
+                     ? {...c, dist: geo[ci].dist} : null)
+      .filter(Boolean)
+      .sort((a,b) => a.dist - b.dist);
+    if (nearest.length) return {lac:nearest[0].lac, rac:nearest[0].rac, bsc:nearest[0].bsc};
+    return {lac:null, rac:null, bsc:null};
+    };
+    return () => v ?? (v = compute());
+  })();
+
+  // BSIC pool is site-level (does not depend on sector azimuth) — computed once, not per sector.
+  const bsicPool = workingCells
+    .map((c,ci) => geo[ci] &&
+                   c.bcch != null && !isNaN(Number(c.bcch)) &&
+                   c.ncc != null && !isNaN(Number(c.ncc)) &&
+                   c.bcc != null && !isNaN(Number(c.bcc))
+                   ? { bcch:Number(c.bcch), ncc:Number(c.ncc), bcc:Number(c.bcc), d:geo[ci].dist } : null)
+    .filter(c => c && c.d >= 0.05);
+
+  // ── Best-server footprint grid (site-level — one pass serves all sectors) ──────
+  // Each pixel of a local grid is won by the cell with the strongest modelled signal:
+  // RSL = −35·log10(d_km) + G(θ), G = −min(25, 12·(θ/beamWidth)²) dB.
+  // T1 neighbours of a sector = external cells whose footprint shares a border with the
+  // sector's footprint, scored Σ 1/d(border pixel → site) — long borders AND close borders
+  // rank higher. T2 = cells whose footprint borders a T1 footprint. Cells co-located with
+  // this site (<50 m) are intra-site and excluded as competitors.
+  const GRID_N=160, GRID_CAND_MAX=400, CI_SAMPLES=600;
+  const gridR=Math.max(2,(cfg.searchRadius||10)*1.2);
+  const kx=111.320*Math.cos(lat*Math.PI/180), ky=110.574;
+  const extCand=workingCells
+    .map((c,ci)=>(!geo[ci]||geo[ci].dist<0.05)?null:{c,ci,x:(c.lon-lon)*kx,y:(c.lat-lat)*ky})
+    .filter(e=>e&&Math.abs(e.x)<=gridR*1.4&&Math.abs(e.y)<=gridR*1.4)
+    .sort((a,b)=>(a.x*a.x+a.y*a.y)-(b.x*b.x+b.y*b.y))
+    .slice(0,GRID_CAND_MAX);
+  // Group co-located, same-azimuth cells (dual-band twins: 900 + 1800 on the same antenna)
+  // into ONE radiator for the footprint competition. Co-sited same-azimuth cells produce
+  // identical RSL at every pixel — as separate candidates the tie-winner takes the whole
+  // footprint and the twin wins zero pixels, vanishing from the neighbour model entirely
+  // (arbitrary and order-dependent). As a group they share the footprint, and every member
+  // cell inherits the group's tier and border score in the neighbour list.
+  const coGroups=[];
+  extCand.forEach(e=>{
+    const eaz=e.c.azimuth||0;
+    const g=coGroups.find(g=>Math.abs(g.x-e.x)<0.05&&Math.abs(g.y-e.y)<0.05&&angleDiff(g.az,eaz)<=15);
+    if(g) g.members.push(e);
+    else coGroups.push({x:e.x,y:e.y,az:eaz,members:[e]});
+  });
+  const nOwn=sectors.length, nCand=nOwn+coGroups.length;
+  // flat candidate arrays: own sectors first (index 0..nOwn-1), then external cell GROUPS
+  const gcAz=new Float64Array(nCand), gcX=new Float64Array(nCand), gcY=new Float64Array(nCand);
+  sectors.forEach((sec,i)=>{gcAz[i]=parseFloat(sec.azimuth)||0;});
+  coGroups.forEach((g,j)=>{gcAz[nOwn+j]=g.az;gcX[nOwn+j]=g.x;gcY[nOwn+j]=g.y;});
+  const HPBW=beamWidth||65;
+  const srv=new Int16Array(GRID_N*GRID_N);
+  const winRSL=new Float32Array(GRID_N*GRID_N);
+  for(let iy=0;iy<GRID_N;iy++){
+    const py=gridR*(1-2*iy/(GRID_N-1));
+    for(let ix=0;ix<GRID_N;ix++){
+      const px=gridR*(2*ix/(GRID_N-1)-1);
+      let best=-1,bv=-Infinity;
+      for(let k=0;k<nCand;k++){
+        const dx=px-gcX[k],dy=py-gcY[k];
+        const d=Math.max(Math.sqrt(dx*dx+dy*dy),0.02);
+        const t=angleDiff((Math.atan2(dx,dy)*180/Math.PI+360)%360,gcAz[k]);
+        const r=-35*Math.log10(d)-Math.min(25,12*(t/HPBW)*(t/HPBW));
+        if(r>bv){bv=r;best=k;}
+      }
+      srv[iy*GRID_N+ix]=best; winRSL[iy*GRID_N+ix]=bv;
+    }
+  }
+  // Footprint adjacency graph with distance-weighted border score
+  const adjW=new Map(); // key a*8192+b (a<b) → {w: Σ 1/d, px: border pixel count}
+  const bumpAdj=(a,b,w)=>{
+    if(a===b||a<0||b<0)return;
+    const k=(a<b?a:b)*8192+(a<b?b:a);
+    const e=adjW.get(k); if(e){e.w+=w;e.px++;} else adjW.set(k,{w,px:1});
+  };
+  for(let iy=0;iy<GRID_N;iy++)for(let ix=0;ix<GRID_N;ix++){
+    const p=iy*GRID_N+ix;
+    const px=gridR*(2*ix/(GRID_N-1)-1),py=gridR*(1-2*iy/(GRID_N-1));
+    const w=1/Math.max(Math.sqrt(px*px+py*py),0.3);
+    if(ix+1<GRID_N)bumpAdj(srv[p],srv[p+1],w);
+    if(iy+1<GRID_N)bumpAdj(srv[p],srv[p+GRID_N],w);
+  }
+  const adjOf=i=>{const m=new Map();adjW.forEach((e,k)=>{const a=Math.floor(k/8192),b=k%8192;if(a===i)m.set(b,e);else if(b===i)m.set(a,e);});return m;};
+  // Per-sector: ranked external T1/T2 + a C/I sample of the sector's own footprint
+  const footData=sectors.map((sec,i)=>{
+    // Tiering runs on GROUPS; each tiered group is then expanded so every member cell
+    // (e.g. the 900 twin AND the 1800 twin) appears in the list with the group's score.
+    const t1Groups=[...adjOf(i).entries()].filter(([j])=>j>=nOwn)
+      .map(([j,e])=>({grp:coGroups[j-nOwn],score:e.w,borderPx:e.px,gcIdx:j}))
+      .sort((a,b)=>b.score-a.score);
+    const t1Ext=t1Groups.flatMap(g=>g.grp.members.map(m=>({ext:m,score:g.score,borderPx:g.borderPx,gcIdx:g.gcIdx})));
+    const t1Idx=new Set(t1Groups.map(e=>e.gcIdx));
+    const t2Acc=new Map(); // gcIdx → weighted border accumulated over all T1 footprints
+    t1Groups.forEach(({gcIdx})=>{
+      adjOf(gcIdx).forEach((e,j)=>{
+        if(j<nOwn||t1Idx.has(j))return;
+        t2Acc.set(j,(t2Acc.get(j)||0)+e.w);
+      });
+    });
+    const t2Ext=[...t2Acc.entries()].map(([j,w])=>({grp:coGroups[j-nOwn],score:w,gcIdx:j}))
+      .sort((a,b)=>b.score-a.score)
+      .flatMap(g=>g.grp.members.map(m=>({ext:m,score:g.score,gcIdx:g.gcIdx})));
+    // Sample the sector's footprint pixels for C/I-based BCCH scoring
+    const fp=[];
+    for(let p=0;p<GRID_N*GRID_N;p++) if(srv[p]===i) fp.push(p);
+    const step=Math.max(1,Math.floor(fp.length/CI_SAMPLES)||1);
+    const sample=[];
+    for(let s=0;s<fp.length;s+=step) sample.push(fp[s]);
+    const sC=new Float32Array(sample.length);
+    const sX=new Float64Array(sample.length), sY=new Float64Array(sample.length);
+    sample.forEach((p,s)=>{
+      sC[s]=winRSL[p];
+      sX[s]=gridR*(2*(p%GRID_N)/(GRID_N-1)-1);
+      sY[s]=gridR*(1-2*Math.floor(p/GRID_N)/(GRID_N-1));
+    });
+    // Strongest interferer RSL per BCCH across the sample pixels. Iterates individual CELLS
+    // (not groups) — dual-band twins share a position but carry different BCCHs, and each
+    // must contribute to its own BCCH's interference map.
+    const imax=new Map(); // bcch → Float32Array(sample length)
+    extCand.forEach(e=>{
+      const b=Number(e.c.bcch); if(e.c.bcch==null||isNaN(b))return;
+      let arr=imax.get(b);
+      if(!arr){arr=new Float32Array(sample.length).fill(-999);imax.set(b,arr);}
+      const eaz=e.c.azimuth||0;
+      for(let s=0;s<sample.length;s++){
+        const dx=sX[s]-e.x,dy=sY[s]-e.y;
+        const d=Math.max(Math.sqrt(dx*dx+dy*dy),0.02);
+        const t=angleDiff((Math.atan2(dx,dy)*180/Math.PI+360)%360,eaz);
+        const r=-35*Math.log10(d)-Math.min(25,12*(t/HPBW)*(t/HPBW));
+        if(r>arr[s])arr[s]=r;
+      }
+    });
+    return {t1Ext,t2Ext,sC,imax,fpCount:fp.length};
+  });
+
+  const sectorResults = sectors.map((sec,idx)=>{
+    const az=parseFloat(sec.azimuth)||0;
+    const trx900=sec.trx900||0, trx1800=sec.trx1800||0;
+    const has900=trx900>0, has1800=trx1800>0;
+    // BCCH band: 900 if present, else 1800
+    const bcchBand=has900?band900:band1800;
+    // TCH counts: subtract 1 BCCH TRX from whichever band carries the BCCH
+    const tch900Count=has900?Math.max(0,trx900-1):0;
+    const tch1800Count=has900?trx1800:Math.max(0,trx1800-1); // if 900-less, 1800 loses 1 for BCCH
+    const bcchPool=getBcchPool(bcchBand);
+    const tch900Pool=getTchPool(band900||{});
+    const tch1800Pool=band1800?getTchPool(band1800):[];
+    const bandSet900=new Set([...getBcchPool(band900||{}),...getTchPool(band900||{})]);
+
+    // Score neighbours
+    const scored=workingCells.map((c,ci)=>{
+      if(!geo[ci]) return null;
+      const {dist,bear}=geo[ci];
+      if(dist>cfg.searchRadius||dist<0.05) return null;
+      const fwdS=Math.max(0,1-angleDiff(bear,az)/beamWidth);
+      const revS=Math.max(0,1-angleDiff((bear+180)%360,c.azimuth||0)/beamWidth);
+      const overlap=fwdS*revS;
+      const relevance=dist/(1+overlap*3);
+      return {...c,dist,bear,fwdS,revS,overlap,relevance};
+    }).filter(Boolean).sort((a,b)=>a.relevance-b.relevance);
+
+    // ── Neighbour tiers from best-server footprints (site-level grid, computed above) ──
+    // T1 = external cells whose dominance footprint shares a border with this sector's
+    // footprint (a handover can only happen across such a border), ranked by the
+    // distance-weighted border score. T2 = cells bordering a T1 footprint (second ring).
+    const foot=footData[idx];
+    const mkNb=(e,tier)=>{
+      const c=e.ext.c, g=geo[e.ext.ci];
+      const fwdS=Math.max(0,1-angleDiff(g.bear,az)/beamWidth);
+      const revS=Math.max(0,1-angleDiff((g.bear+180)%360,c.azimuth||0)/beamWidth);
+      return {...c,dist:g.dist,bear:g.bear,fwdS,revS,overlap:fwdS*revS,
+        tier,isFirstTier:tier===1,hasBeamOverlap:true,tierLabel:tier===1?'1st':'2nd',
+        nbScore:e.score,nbRelevance:-e.score};
+    };
+    const effectiveTier1=foot.t1Ext.map(e=>mkNb(e,1));
+    const effectiveTier2=foot.t2Ext.map(e=>mkNb(e,2));
+
+    // ── BCCH + BCC + NCC (joint selection) ──────────────────────────────────
+    // Goal: find (BCCH, NCC, BCC) triplet such that no cell within bsicRadius shares
+    // the same combination — i.e. unique BCCH+BSIC combo in that radius.
+    // BCCH preference order is governed by beam-overlap passes (T1/T2 avoidance);
+    // if no pair is found at full radius, shrink by 80% and retry all passes.
+
+    const nb900 = scored.filter(c => c.bcch !== null && !isNaN(Number(c.bcch)) && bandSet900.has(Number(c.bcch)));
+    const allNbBCCHs = [...new Set(nb900.map(c => Number(c.bcch)).filter(b => !isNaN(b)))];
+    const tier1BCCHs = new Set(effectiveTier1.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
+    const tier2BCCHs = new Set(effectiveTier2.filter(c => bandSet900.has(Number(c.bcch))).map(c => Number(c.bcch)));
+    const inSiteAdj = new Set(); siteReg.bcch.forEach(b => { inSiteAdj.add(b-1); inSiteAdj.add(b); inSiteAdj.add(b+1); });
+    // inSiteExact: exact BCCHs already assigned to sibling sectors — must never be reused,
+    // even in forced mode (forced only relaxes neighbour constraints, not intra-site uniqueness).
+    const inSiteExact = new Set(siteReg.bcch);
+
+    // C/I-based BCCH cost, evaluated over the sector's OWN footprint (sampled pixels):
+    // for candidate a, I(pixel) = max(strongest co-channel RSL, strongest adjacent-channel
+    // RSL − 18 dB ACI protection); cost = −(10th-percentile of C − I) — i.e. pick the BCCH
+    // whose worst-decile carrier-to-interference across the actual service area is best.
+    // Falls back to the angular heuristic when the sector has no footprint (e.g. a sibling
+    // with a duplicate azimuth won every pixel).
+    const CO_W = [1.0, 0.4];
+    const angularCost = a => {
+      let cost = 0;
+      for (const c of nb900) {
+        const d = Math.abs(Number(c.bcch) - a);
+        if (d > 1) continue;
+        cost += CO_W[d] * (0.2 + Math.max(c.fwdS || 0, c.revS || 0)) / Math.max(c.dist, 0.1);
+      }
+      return cost;
+    };
+    const bcchCost = a => {
+      if (!foot.sC.length) return angularCost(a);
+      const co = foot.imax.get(a), lo = foot.imax.get(a-1), hi = foot.imax.get(a+1);
+      if (!co && !lo && !hi) return -1e9; // no co/adj interferer anywhere in the grid — ideal
+      const cis = [];
+      for (let s = 0; s < foot.sC.length; s++) {
+        let I = -999;
+        if (co && co[s] > I) I = co[s];
+        if (lo && lo[s]-18 > I) I = lo[s]-18;
+        if (hi && hi[s]-18 > I) I = hi[s]-18;
+        cis.push(foot.sC[s] - I);
+      }
+      cis.sort((x,y) => x-y);
+      return -cis[Math.floor(cis.length * 0.1)];
+    };
+    const bcchCands = blocked => bcchPool
+      .filter(a => !blocked.has(a) && !inSiteExact.has(a))
+      .map(a => ({ a, cost: bcchCost(a) }))
+      .sort((x, y) => x.cost - y.cost || Math.random() - 0.5);
+    const passes = [
+      { mode:"clean",    cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs, ...tier2BCCHs])) },
+      { mode:"t2_reuse", cands: bcchCands(new Set([...inSiteAdj, ...tier1BCCHs])) },
+      { mode:"t1_reuse", cands: bcchCands(inSiteAdj) },
+      // forced: relaxes all neighbour constraints but still bans exact intra-site BCCH reuse
+      { mode:"forced",   cands: bcchPool.filter(a => !inSiteExact.has(a)).map(a => ({ a, sep:0 })) },
+    ];
+
+    let bestBCCH = null, bestNCC = null, bestBCC = null, bcchMode = "clean";
+    let bestBsicR = 0; // actual radius at which BSIC uniqueness was achieved
+    const bsicMaxR = cfg.bsicRadius ?? 50;
+    const nccOrd = shuffle(nccPool);
+    const bccOrd = shuffle([0,1,2,3,4,5,6,7]);
+
+    // BCCH tier takes absolute priority over BSIC uniqueness radius.
+    // For each tier (clean → t2_reuse → t1_reuse → forced), try shrinking the BSIC
+    // uniqueness radius until a free (NCC, BCC) slot is found for some BCCH in that
+    // tier's candidate set.  Only move to the next (worse) BCCH tier if no BCCH in
+    // the current tier can achieve BSIC uniqueness even at the minimum radius.
+    // This prevents a dense network (many forbidden triplets at 50 km) from forcing
+    // a t1_reuse BCCH when a t2_reuse BCCH would have worked at a slightly smaller radius.
+    passLoop: for (const pass of passes) {
+      let r = bsicMaxR;
+      while (r >= 1) {
+        const forbidden = new Set();
+        bsicPool.filter(c => c.d <= r).forEach(c => forbidden.add(`${c.bcch}_${c.ncc}_${c.bcc}`));
+        for (const { a } of pass.cands) {
+          // Collect ALL free (NCC,BCC) slots for this BCCH at radius r, then keep the one with
+          // the largest TRUE repeat distance (a never-used triplet = Infinity, always best).
+          // Was: first free slot found — could repeat at r+1 km when another free slot for the
+          // same BCCH repeats at 200 km.
+          let bestPair = null, bestPairDist = -1;
+          for (const n of nccOrd) {
+            for (const b of bccOrd) {
+              if (forbidden.has(`${a}_${n}_${b}`)) continue;
+              const matches = bsicPool.filter(c => c.bcch === a && c.ncc === n && c.bcc === b);
+              const rd = matches.length ? Math.min(...matches.map(c => c.d)) : Infinity;
+              if (rd > bestPairDist) { bestPairDist = rd; bestPair = [n, b]; }
+            }
+          }
+          if (bestPair) {
+            bestBCCH = a; bestNCC = bestPair[0]; bestBCC = bestPair[1]; bcchMode = pass.mode; bestBsicR = r;
+            break passLoop;
+          }
+        }
+        r *= 0.8;
+      }
+      // If we exhausted all radii for this pass with no result, fall through to next pass.
+    }
+    if (bestBCCH === null) {
+      // All tiers exhausted across all radii — absolute last resort.
+      // Still never reuse a sibling sector's exact BCCH; ignore all other constraints.
+      const freePool = bcchPool.filter(a => !inSiteExact.has(a));
+      if (freePool.length) {
+        bcchMode = "forced";
+        bestBCCH = freePool[0];
+        bestNCC = nccPool[0] ?? 0;
+        const cnt = Array(8).fill(0);
+        bsicPool.forEach(c => cnt[c.bcc]++);
+        bestBCC = cnt.indexOf(Math.min(...cnt));
+        bestBsicR = 0;
+      } else {
+        // Truly impossible — all BCCHs in the pool are already used by sibling sectors of this site
+        bcchMode = "impossible";
+        bestBCCH = null; bestNCC = null; bestBCC = null; bestBsicR = 0;
+      }
+    }
+    if (bestBCCH !== null) siteReg.bcch.push(bestBCCH);
+
+    // Compute the actual minimum distance to any cell sharing the same (BCCH, NCC, BCC) triplet.
+    // This is the true "BSIC+BCCH repeat distance" — null means fully unique in the working network.
+    const bsicRepeatDist = (bestBCCH == null || bestNCC == null || bestBCC == null) ? null : (() => {
+      const matches = bsicPool.filter(c => c.bcch === bestBCCH && c.ncc === bestNCC && c.bcc === bestBCC);
+      return matches.length === 0 ? null : Math.min(...matches.map(c => c.d));
+    })();
+
+    const inSiteBCCHSet=new Set([...siteReg.bcch]);
+
+    // Neighbour list rules:
+    //  • ALL T1 are always kept — a footprint that borders this sector is a mandatory
+    //    neighbour, even when T1 alone exceeds maxNeighbours and even when the bordering
+    //    cell lies beyond the search radius (rural: dominance borders can be far out).
+    //  • If T1 < maxNeighbours, T2 fills the remaining slots in rank order, but only
+    //    T2 cells within the search radius qualify as fillers.
+    const t2Within = effectiveTier2.filter(nb => nb.dist <= (cfg.searchRadius || 10));
+    const externalNeighbors = effectiveTier1.length >= cfg.maxNeighbours
+      ? effectiveTier1
+      : [...effectiveTier1, ...t2Within.slice(0, cfg.maxNeighbours - effectiveTier1.length)];
+
+    // TCH assigned via round-robin below — placeholders for now
+    return {
+      idx,az,trx900,trx1800,has900,has1800,tch900Count,tch1800Count,
+      bcchBandName:bcchBand?.name||"—",
+      bcch:bestBCCH, bcchMode,
+      tch900List:[], tch900Mode:'n/a',
+      tch1800List:[], tch1800Mode:'n/a',
+      ncc:bestNCC,bcc:bestBCC,
+      bsic:bestNCC!=null?`${bestNCC}/${bestBCC}`:'—',
+      bsicDec:bestNCC!=null?bestNCC*8+bestBCC:null,
+      bsicRepeatDist,
+      lac:lrbOf().lac,rac:lrbOf().rac,bsc:lrbOf().bsc,
+      externalNeighbors,
+      tier1BCCHs:[...tier1BCCHs].sort((a,b)=>a-b),
+      allNbBCCHs:allNbBCCHs.sort((a,b)=>a-b),
+      stats:{total:scored.length,tier1Count:effectiveTier1.length,tier2Count:effectiveTier2.length,tier3Count:0,
+             demotedCount:0,upgradedCount:0,shadowedCount:0},
+      // private fields consumed by round-robin — deleted before returning
+      _scored:scored, _inSiteBCCHSet:inSiteBCCHSet,
+      _tch900Pool:tch900Pool, _tch1800Pool:tch1800Pool,
+      _tier1Cells:effectiveTier1,
+    };
+  });
+
+  // ── Round-robin TCH assignment ────────────────────────────────────────────
+  // Assign 1 TCH per sector per band per round so that each sector's Nth pick
+  // is informed by every other sector's (N-1) already-committed TCHs.
+  const MODE_RANK = {clean:0,'n/a':0,t1_adj:1,partial:2,site_adj:3,nb_reuse:4,nb_reuse_adj:5,site_reuse:6,reuse:7,impossible:8};
+  const worseMode = (a,b) => (MODE_RANK[a]??1) >= (MODE_RANK[b]??1) ? a : b;
+
+  const maxRounds = sectorResults.reduce((m,s) => Math.max(m, s.tch900Count, s.tch1800Count), 0);
+  const acc900  = sectorResults.map(() => ({list:[], mode:'clean'}));
+  const acc1800 = sectorResults.map(() => ({list:[], mode:'clean'}));
+
+  for (let round=0; round<maxRounds; round++) {
+    // Shuffle sector order each round so no single sector always gets first pick of the clean pool.
+    const sectorOrder = shuffle(sectorResults.map((_,i) => i));
+    for (const i of sectorOrder) {
+      const s = sectorResults[i];
+      if (acc900[i].list.length < s.tch900Count) {
+        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1, acc900[i].list, s._tier1Cells);
+        acc900[i].list.push(...list);
+        acc900[i].mode = worseMode(acc900[i].mode, mode);
+      }
+      if (acc1800[i].list.length < s.tch1800Count) {
+        // For 1800-only cells (no 900 band) the BCCH is on 1800 — pass inSiteBCCHSet so the
+        // planner avoids ±1 of the BCCH.  Dual-band cells have BCCH on 900 (different ARFCNs),
+        // so an empty set is correct and avoids unnecessary filtering.
+        const inSiteBCCHSet1800 = s.has900 ? new Set() : s._inSiteBCCHSet;
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, inSiteBCCHSet1800, siteReg.tch1800, 1, acc1800[i].list, s._tier1Cells);
+        acc1800[i].list.push(...list);
+        acc1800[i].mode = worseMode(acc1800[i].mode, mode);
+      }
+    }
+  }
+
+  // Merge TCH back into results and drop private fields
+  sectorResults.forEach((s,i) => {
+    s.tch900List  = acc900[i].list.sort((a,b)=>a-b);
+    s.tch900Mode  = acc900[i].list.length < s.tch900Count ? 'partial' : acc900[i].mode;
+    s.tch1800List = acc1800[i].list.sort((a,b)=>a-b);
+    s.tch1800Mode = acc1800[i].list.length < s.tch1800Count ? 'partial' : acc1800[i].mode;
+    delete s._scored; delete s._inSiteBCCHSet; delete s._tch900Pool; delete s._tch1800Pool; delete s._tier1Cells;
+  });
+
+  // Post-processing: if a sector ended up with 'clean' mode but one of its TCHs is
+  // adjacent (±1) to a sibling sector's TCH, upgrade its mode to 'site_adj' so the
+  // badge reflects the actual cross-sector adjacency regardless of planning order.
+  // Only 'clean' is checked — 'partial' already signals under-allocation and must not
+  // be silently overwritten with a different label.
+  const CLEAN_MODES = new Set(['clean']);
+  sectorResults.forEach((sec, i) => {
+    ['900','1800'].forEach(band => {
+      const modeKey = `tch${band}Mode`;
+      if (!CLEAN_MODES.has(sec[modeKey])) return;
+      const myTCH = sec[`tch${band}List`];
+      if (!myTCH || !myTCH.length) return;
+      const hasAdj = sectorResults.some((other, j) => {
+        if (j === i) return false;
+        return (other[`tch${band}List`] || []).some(t => myTCH.some(m => Math.abs(m - t) === 1));
+      });
+      if (hasAdj) sec[modeKey] = 'site_adj';
+    });
+  });
+
+  // Expose the best-server grid this site was actually planned with, so the map view can
+  // RENDER it directly instead of recomputing it with different resolution/candidate-cap —
+  // two independent implementations of the same model will drift on borderline cells (thin
+  // shared borders in dense networks), which is exactly the kind of mismatch a re-render can
+  // introduce. sC/imax (per-pixel C/I sampling arrays) are dropped — already consumed above.
+  sectorResults.footprint = {
+    srv, gridN:GRID_N, gridR, nOwn, lat, lon, beamWidth:HPBW,
+    footData: footData.map(fd => ({t1Ext:fd.t1Ext, t2Ext:fd.t2Ext, fpCount:fd.fpCount})),
+  };
+
+  return sectorResults;
+}
+
+// onProgress(pass, siteIdx, total, totalPasses, lockedCount)
+// Called just before each planOneSite to let the UI update the progress bar.
+async function planAllSites(sites,baseCells,cfg,onProgress) {
+  const maxPasses = Math.max(1, cfg.maxPasses ?? 3);
+  // Yield to the browser so React can flush any pending state updates (progress bar redraws).
+  const yield_ = () => new Promise(r => setTimeout(r, 0));
+
+  const toVCell = (site, r) => ({
+    cellName:`${site.name}_S${r.idx+1}`, siteName:site.name,
+    lat:parseFloat(site.lat), lon:parseFloat(site.lon), azimuth:r.az,
+    bcch:r.bcch, tchList:[...r.tch900List,...r.tch1800List],
+    ncc:r.ncc, bcc:r.bcc, lac:r.lac, rac:r.rac, bsc:r.bsc, isPlanned:true
+  });
+
+  // Continuous interference cost: overlap/distance-weighted sum over every sector's neighbour
+  // list. Co-channel BCCH = 1.0, adjacent BCCH = 0.4, co-channel TCH = 0.5, each scaled by
+  // (0.2 + worstOverlap) / dist. Gives pass selection a real gradient — two passes with equal
+  // degraded counts can differ hugely in actual RF interference.
+  const interferenceCost = results => {
+    let cost = 0;
+    results.forEach(({sectorResults}) => {
+      sectorResults.forEach(r => {
+        const myTCH = new Set([...r.tch900List, ...r.tch1800List]);
+        r.externalNeighbors.forEach(nb => {
+          const w = (0.2 + Math.max(nb.fwdS || 0, nb.revS || 0)) / Math.max(nb.dist || 0.1, 0.1);
+          if (nb.bcch != null && r.bcch != null) {
+            const d = Math.abs(Number(nb.bcch) - r.bcch);
+            if (d === 0) cost += w; else if (d === 1) cost += 0.4 * w;
+          }
+          (nb.tchList || []).forEach(t => { if (myTCH.has(Number(t))) cost += 0.5 * w; });
+        });
+      });
+    });
+    return cost;
+  };
+
+  // Score: [degradedSectors, t1BcchConflicts, interferenceCost] — lexicographic, lower wins.
+  const scorePass = results => {
+    let degraded = 0, conflicts = 0;
+    results.forEach(({sectorResults}) => {
+      sectorResults.forEach(r => {
+        if (r.bcchMode !== 'clean') degraded++;
+        if (r.tier1BCCHs && r.tier1BCCHs.includes(r.bcch)) conflicts++;
+      });
+    });
+    return [degraded, conflicts, interferenceCost(results)];
+  };
+
+  const isBetter = (a, b) =>
+    a[0] < b[0] ||
+    (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] < b[2] - 1e-9)));
+
+  // Hardest-first ordering: sites in the densest existing-cell environment are the most
+  // spectrum-constrained, so they get first pick of the clean pool (was: CSV order, where a
+  // dense site planned last inherited an exhausted spectrum). Output is re-sorted to input
+  // order before returning.
+  const density = site => {
+    const slat = parseFloat(site.lat), slon = parseFloat(site.lon);
+    return baseCells.reduce((n, c) =>
+      n + (!isNaN(c.lat) && !isNaN(c.lon) && haversineKm(slat, slon, c.lat, c.lon) <= cfg.searchRadius ? 1 : 0), 0);
+  };
+  const planOrder = [...sites].sort((a, b) => density(b) - density(a));
+
+  // Pass 1: sequential greedy, hardest first
+  let lastResults = [];
+  {
+    let wc = [...baseCells];
+    for (let i = 0; i < planOrder.length; i++) {
+      const site = planOrder[i];
+      onProgress && onProgress(1, i, sites.length, maxPasses, 0);
+      await yield_();
+      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
+      sectorResults.forEach(r => wc.push(toVCell(site, r)));
+      lastResults.push({site, sectorResults});
+    }
+    onProgress && onProgress(1, sites.length, sites.length, maxPasses, 0);
+  }
+
+  let bestResults = lastResults;
+  let bestScore = scorePass(lastResults);
+
+  // Passes 2..N: Gauss-Seidel iteration — each site is re-planned against the LATEST
+  // frequencies of every other site (already-replanned sites from THIS pass, the rest from
+  // the previous pass). Converges faster than Jacobi and avoids two neighbouring sites
+  // swapping into each other's old conflict. Keep the best-scoring pass, not just the last.
+  for (let pass = 2; pass <= maxPasses; pass++) {
+    const prevVCells = {};
+    lastResults.forEach(({site, sectorResults}) => {
+      prevVCells[site.name] = sectorResults.map(r => toVCell(site, r));
+    });
+    const currVCells = {};
+
+    // Lock sites that have zero frequency coupling with the rest of the batch:
+    //   1. Every sector already has a clean BCCH assignment, AND
+    //   2. No sector sees any other planned site as a neighbour (isPlanned flag).
+    // Such sites have no reason to change — their planning environment is identical
+    // to the previous pass, so re-running planOneSite would produce the exact same
+    // result.  We copy the previous result directly and skip the expensive call.
+    // Sites that ARE neighbours of other planned sites are still re-planned even if
+    // locked themselves — their frequencies may still influence others' assignments.
+    const locked = new Set(
+      lastResults
+        .filter(({sectorResults}) =>
+          sectorResults.every(r => r.bcchMode === 'clean') &&
+          !sectorResults.some(r => r.externalNeighbors.some(nb => nb.isPlanned))
+        )
+        .map(({site}) => site.name)
+    );
+
+    const nextResults = [];
+    for (let i = 0; i < planOrder.length; i++) {
+      const site = planOrder[i];
+      if (locked.has(site.name)) {
+        // Locked: copy previous result without yielding (negligible cost, no UI stall)
+        nextResults.push(lastResults.find(r => r.site.name === site.name));
+        currVCells[site.name] = prevVCells[site.name];
+        continue;
+      }
+      onProgress && onProgress(pass, i, sites.length, maxPasses, locked.size);
+      await yield_();
+      const wc = [...baseCells];
+      planOrder.forEach(s => {
+        if (s.name !== site.name) ((currVCells[s.name] ?? prevVCells[s.name]) || []).forEach(vc => wc.push(vc));
+      });
+      const sectorResults = planOneSite({lat:parseFloat(site.lat),lon:parseFloat(site.lon),sectors:site.sectors}, wc, cfg);
+      currVCells[site.name] = sectorResults.map(r => toVCell(site, r));
+      nextResults.push({site, sectorResults});
+    }
+    onProgress && onProgress(pass, sites.length, sites.length, maxPasses, locked.size);
+    await yield_();
+
+    lastResults = nextResults;
+    const s = scorePass(nextResults);
+    if (isBetter(s, bestScore)) { bestScore = s; bestResults = nextResults; }
+  }
+
+  // Targeted repair pass: re-plan ONLY degraded sites against everyone else's final
+  // frequencies, keeping each change only if the global score improves. Attacks residual
+  // conflicts directly instead of re-rolling the whole plan with another full pass.
+  {
+    const finalVCells = {};
+    bestResults.forEach(({site, sectorResults}) => {
+      finalVCells[site.name] = sectorResults.map(r => toVCell(site, r));
+    });
+    const degradedSites = bestResults.filter(({sectorResults}) =>
+      sectorResults.some(r => r.bcchMode !== 'clean' || (r.tier1BCCHs || []).includes(r.bcch)));
+    for (const entry of degradedSites) {
+      await yield_();
+      const wc = [...baseCells];
+      bestResults.forEach(({site}) => {
+        if (site.name !== entry.site.name) finalVCells[site.name].forEach(vc => wc.push(vc));
+      });
+      const sectorResults = planOneSite(
+        {lat:parseFloat(entry.site.lat), lon:parseFloat(entry.site.lon), sectors:entry.site.sectors}, wc, cfg);
+      const candidate = bestResults.map(r =>
+        r.site.name === entry.site.name ? {site: entry.site, sectorResults} : r);
+      const s = scorePass(candidate);
+      if (isBetter(s, bestScore)) {
+        bestScore = s;
+        bestResults = candidate;
+        finalVCells[entry.site.name] = sectorResults.map(r => toVCell(entry.site, r));
+      }
+    }
+  }
+
+  // Restore original input order for display/export.
+  const inputIdx = new Map(sites.map((s, i) => [s.name, i]));
+  return [...bestResults].sort((a, b) => inputIdx.get(a.site.name) - inputIdx.get(b.site.name));
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportAll(allResults) {
+  // Sheet 1: Freq Plan
+  const freqRows = [];
+  allResults.forEach(({site, sectorResults}) => {
+    sectorResults.forEach(r => {
+      freqRows.push({
+        Site: site.name,
+        SiteID: site.siteId || "",
+        Cell: `${site.name}_S${r.idx+1}`,
+        Sector: `S${r.idx+1}`,
+        Azimuth: r.az,
+        TRX_900: r.trx900,
+        TRX_1800: r.trx1800,
+        BCCH_Band: r.bcchBandName,
+        BCCH: r.bcch,
+        BCCH_Sep: r.bcch != null && (r.allNbBCCHs || []).length
+          ? Math.min(...r.allNbBCCHs.map(u => Math.abs(u - r.bcch))) : "",
+        BCCH_Mode: r.bcchMode,
+        TCH_900_Count: r.tch900Count,
+        TCH_900: r.tch900List.join(" "),
+        TCH_900_Mode: r.tch900Mode,
+        TCH_1800_Count: r.tch1800Count,
+        TCH_1800: r.tch1800List.join(" "),
+        TCH_1800_Mode: r.tch1800Mode,
+        NCC: r.ncc,
+        BCC: r.bcc,
+        BSIC: r.bsicDec ?? "",
+        BSIC_Repeat_km: r.bsicRepeatDist != null ? Math.round(r.bsicRepeatDist * 10) / 10 : "",
+        LAC: r.lac ?? "",
+        RAC: r.rac ?? "",
+        BSC: r.bsc ?? "",
+      });
+    });
+  });
+
+  // Sheet 2: Neighbour Plan — one row per neighbour pair
+  const nbRows = [];
+  allResults.forEach(({site, sectorResults}) => {
+    sectorResults.forEach(r => {
+      const srcCell = `${site.name}_S${r.idx+1}`;
+      const srcBCCH = r.bcch ?? "";
+      const srcTCH = [...r.tch900List, ...r.tch1800List].join(" ");
+
+      // Intra-site: other sectors of the same physical site → rank 0
+      sectorResults.filter(s => s.idx !== r.idx).forEach(s => {
+        nbRows.push({
+          Source_Cell: srcCell,
+          Target_Cell: `${site.name}_S${s.idx+1}`,
+          Rank: 0,
+          Distance_km: 0,
+          Tier: "Intra-site",
+          Fwd_Overlap_pct: "",
+          Rev_Overlap_pct: "",
+          Source_BCCH: srcBCCH,
+          Neighbour_BCCH: s.bcch ?? "",
+          Source_TCH: srcTCH,
+          Neighbour_TCH: [...s.tch900List, ...s.tch1800List].join(" "),
+        });
+      });
+
+      // External neighbours — already sorted by priority/relevance → rank 1, 2, 3 …
+      r.externalNeighbors.forEach((nb, i) => {
+        nbRows.push({
+          Source_Cell: srcCell,
+          Target_Cell: nb.cellName,
+          Rank: i + 1,
+          Distance_km: Number(nb.dist).toFixed(3),
+          Tier: nb.tierLabel || (nb.tier===1?"1st":nb.tier===2?"2nd":"3rd"),
+          Fwd_Overlap_pct: Math.round(nb.fwdS * 100),
+          Rev_Overlap_pct: Math.round(nb.revS * 100),
+          Source_BCCH: srcBCCH,
+          Neighbour_BCCH: nb.bcch ?? "",
+          Source_TCH: srcTCH,
+          Neighbour_TCH: (nb.tchList || []).join(" "),
+        });
+      });
+    });
+  });
+
+  const HDR = {
+    fill: {patternType:'solid', fgColor:{rgb:'1F4E79'}},
+    font: {bold:true, color:{rgb:'FFFFFF'}},
+    alignment: {horizontal:'center', vertical:'center'},
+  };
+  function styledSheet(rows, xSplit) {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    if (ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({r:0, c:C});
+        if (ws[addr]) ws[addr].s = HDR;
+      }
+    }
+    ws['!views'] = [{state:'frozen', xSplit, ySplit:1, topLeftCell: XLSX.utils.encode_cell({r:1, c:xSplit}), activePane:'bottomRight'}];
+    return ws;
+  }
+
+  const wb = XLSX.utils.book_new();
+  wb.Props = { Author:"Ankit Jain", Title:"2G Frequency Plan", CreatedDate:new Date() };
+  XLSX.utils.book_append_sheet(wb, styledSheet(freqRows, 4), "Freq Plan");       // freeze after Sector (col D)
+  XLSX.utils.book_append_sheet(wb, styledSheet(nbRows, 1), "Neighbour Plan");    // freeze after Source_Cell (col A)
+  XLSX.writeFile(wb, `freq_plan_${new Date().toISOString().slice(0,10)}.xlsx`, {cellStyles:true});
+}
+
+// ── Default state ─────────────────────────────────────────────────────────────
+const DEFAULT_BANDS=[
+  {id:"b1",name:"GSM-900", bcchStr:"76-87",       tchStr:"88-101, 123, 124"},
+  {id:"b2",name:"GSM-1800",bcchStr:"562,563,610", tchStr:"564-571,601-610"},
+];
+
+// ── UI atoms ──────────────────────────────────────────────────────────────────
+const CARD={background:"var(--color-background-primary)",border:"1px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-xl)",padding:"16px",marginBottom:"12px",boxShadow:"var(--shadow-sm)"};
+const FN={fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"};
+const MONO={fontFamily:"var(--font-mono)",fontSize:"12px"};
+
+function Steps({current,onNav,canGo}) {
+  return(
+    <div className="steps">
+      {["Load data","Configure","Results"].map((s,i)=>{
+        const n=i+1,active=n===current,done=n<current;
+        // Forward nav allowed when that step's data already exists (canGo) — e.g. jump
+        // straight back to Results after revisiting step 1.
+        const navable=!active&&(done||n===1||(canGo||[]).includes(n));
+        const cls=active?"step active":done?"step done":"step";
+        return(
+          <div key={n} className={cls} style={navable?{cursor:"pointer"}:{}} onClick={()=>navable&&onNav&&onNav(n)}>
+            <div className="dot">{done?"✓":n}</div>
+            <span style={{fontWeight:600}}>{s}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ColMapper({headers,mapping,onChange,fields}) {
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:"8px",marginTop:"10px"}}>
+      {Object.entries(fields).map(([key,label])=>(
+        <div key={key}>
+          <div style={FN}>{label}</div>
+          <select value={mapping[key]||""} onChange={e=>onChange({...mapping,[key]:e.target.value})} style={{width:"100%",fontSize:"12px",fontFamily:"var(--font-mono)"}}>
+            <option value="">— select —</option>
+            {headers.map(h=><option key={h} value={h}>{h}</option>)}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FileBlock({id,title,hint,data,onLoad,sheetHint,note}) {
+  const [loading,setLoading]=useState(false);
+  const [drag,setDrag]=useState(false);
+  const ref=useRef();
+  const loadFile=async file=>{
+    if(!file)return;
+    setLoading(true);
+    try{const d=await parseFile(file,sheetHint);onLoad(d,file.name);}
+    catch(ex){alert("Failed to read: "+ex.message);}
+    finally{setLoading(false);}
+  };
+  const handle=e=>loadFile(e.target.files[0]);
+  return(
+    <div style={{...CARD,...(drag?{borderColor:"var(--nokia-blue)",background:"var(--nokia-light)"}:{})}}
+      onDragOver={e=>{e.preventDefault();setDrag(true);}}
+      onDragLeave={()=>setDrag(false)}
+      onDrop={e=>{e.preventDefault();setDrag(false);loadFile(e.dataTransfer.files[0]);}}>
+      <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"3px"}}>{title}</div>
+      <div style={{fontSize:"12px",color:"var(--color-text-secondary)",marginBottom:"10px"}}>{hint}</div>
+      <input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={handle} id={id} ref={ref} style={{display:"none"}}/>
+      <button onClick={()=>ref.current.click()} disabled={loading}>{loading?"Reading…":"Upload file"}</button>
+      <span style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginLeft:"8px"}}>or drag &amp; drop</span>
+      {note&&<div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"8px"}}>{note}</div>}
+      {data&&<div style={{fontSize:"12px",color:"var(--color-text-success)",marginTop:"10px"}}>
+        ✓ {data.rows.length.toLocaleString()} rows{data.sheetName?` · sheet: "${data.sheetName}"`:""}
+        {data.allSheets?.length>1&&<span style={{color:"var(--color-text-tertiary)",fontSize:"11px"}}> · other sheets: {data.allSheets.filter(s=>s!==data.sheetName).join(", ")}</span>}
+      </div>}
+    </div>
+  );
+}
+
+function Pill({n,type}) {
+  const m={default:{bg:"var(--color-background-secondary)",c:"var(--color-text-secondary)",b:"var(--color-border-secondary)"},
+    warn:{bg:"var(--color-background-warning)",c:"var(--color-text-warning)",b:"var(--color-border-warning)"},
+    danger:{bg:"var(--color-background-danger)",c:"var(--color-text-danger)",b:"var(--color-border-danger)"},
+    info:{bg:"var(--color-background-info)",c:"var(--color-text-info)",b:"var(--color-border-info)"},
+    teal:{bg:"rgba(29,158,117,0.12)",c:"#0f6e56",b:"rgba(29,158,117,0.4)"}};
+  const s=m[type||"default"];
+  return <span style={{display:"inline-block",padding:"2px 7px",borderRadius:"4px",fontSize:"12px",fontFamily:"var(--font-mono)",margin:"2px",background:s.bg,color:s.c,border:`0.5px solid ${s.b}`}}>{n}</span>;
+}
+
+function ModeBadge({mode}) {
+  const cfg={clean:{l:"✓ clean",t:"info"},bsic_only:{l:"⚠ BSIC guard",t:"warn"},forced:{l:"⚠ forced",t:"warn"},t1_adj:{l:"~ T1 adj",t:"warn"},site_adj:{l:"~ x-sector adj",t:"warn"},t2_reuse:{l:"⚠ T2 reuse",t:"warn"},t1_reuse:{l:"⚠ T1 reuse",t:"warn"},nb_reuse:{l:"⚠ nb reuse",t:"warn"},nb_reuse_adj:{l:"⚠ nb+adj",t:"warn"},site_reuse:{l:"⚠ site reuse",t:"warn"},intra_adj:{l:"⚠ intra-adj",t:"warn"},reuse:{l:"⚠ reuse",t:"warn"},impossible:{l:"✗ impossible",t:"error"},"n/a":{l:"—",t:"default"}};
+  const c=cfg[mode]||{l:mode,t:"default"};
+  const m={info:{bg:"var(--color-background-info)",color:"var(--color-text-info)",b:"var(--color-border-info)"},
+    warn:{bg:"var(--color-background-warning)",color:"var(--color-text-warning)",b:"var(--color-border-warning)"},
+    error:{bg:"var(--color-background-danger)",color:"var(--color-text-danger)",b:"var(--color-border-danger)"},
+    default:{bg:"var(--color-background-secondary)",color:"var(--color-text-tertiary)",b:"var(--color-border-tertiary)"}};
+  const s=m[c.t]||m.default;
+  return <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"4px",background:s.bg,color:s.color,border:`0.5px solid ${s.b}`,fontWeight:"500",whiteSpace:"nowrap"}}>{c.l}</span>;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Map helpers ──────────────────────────────────────────────────────────────
+function destPoint(lat,lon,bearingDeg,distKm){
+  const R=6371,d=distKm/R,brng=bearingDeg*Math.PI/180;
+  const lat1=lat*Math.PI/180,lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(brng));
+  const lon2=lon1+Math.atan2(Math.sin(brng)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return [lat2*180/Math.PI,((lon2*180/Math.PI)+540)%360-180];
+}
+function sectorWedge(lat,lon,az,beamWidthDeg,radiusKm){
+  const half=beamWidthDeg/2,steps=18,pts=[[lat,lon]];
+  for(let i=0;i<=steps;i++) pts.push(destPoint(lat,lon,az-half+beamWidthDeg*i/steps,radiusKm));
+  return pts;
+}
+const MAP_PALETTE=['#e63946','#2196f3','#4caf50','#ff9800','#9c27b0','#00bcd4','#ff5722','#3f51b5','#8bc34a','#f06292','#009688','#ffc107','#673ab7','#795548'];
+// Deterministic colour: same BCCH always gets the same colour regardless of plan size
+function bcchToColor(bcch){
+  if(bcch==null) return '#888';
+  // multiply-hash so nearby ARFCNs get different palette slots
+  return MAP_PALETTE[(Math.abs(Number(bcch)*2654435761|0))%MAP_PALETTE.length];
+}
+
+// ── Map view component ────────────────────────────────────────────────────────
+function PlanMap({results,cells,activeSite,setActiveSite,activeTab,setActiveTab,cfg,visible}){
+  const {useRef,useEffect,useState,useMemo}=React;
+  const divRef=useRef(null);
+  const mapRef=useRef(null);
+  const layers=useRef([]);
+  const initialFitDone=useRef(false);
+  const [mapBW,setMapBW]=useState(30);
+  const [mapLenKm,setMapLenKm]=useState(null); // null = auto
+  const [bsOn,setBsOn]=useState(false);
+
+  // ── Best-server footprint — RENDERS the exact grid the planning engine computed for this
+  // site's neighbour tiers (attached to sectorResults.footprint in planOneSite). No separate
+  // computation here: two independent implementations of the same model will disagree on
+  // borderline cells (thin shared borders in dense networks), so this must be a pure render
+  // of the stored raster, not a recomputation, or "what you see" can drift from "what was planned".
+  const bs=useMemo(()=>{
+    if(!bsOn||!results||!results.length) return null;
+    const selSite=results[activeSite],selSec=selSite?.sectorResults?.[activeTab];
+    const fp=selSite?.sectorResults?.footprint;
+    if(!selSite||!selSec||!fp) return null;
+    const {srv,gridN:N,gridR:R,nOwn,lat:lat0,lon:lon0,beamWidth:HP,footData}=fp;
+    const selIdx=activeTab; // own sectors occupy grid indices 0..nOwn-1 in sector order
+    const fd=footData[activeTab];
+    const t1Set=new Set(fd.t1Ext.map(e=>e.gcIdx));
+    const t2Set=new Set(fd.t2Ext.map(e=>e.gcIdx));
+    const ky=110.574,kx=111.320*Math.cos(lat0*Math.PI/180);
+    // Render the stored raster to an offscreen canvas → Leaflet image overlay
+    const cv=document.createElement('canvas');cv.width=N;cv.height=N;
+    const ctx=cv.getContext('2d');const img=ctx.createImageData(N,N);
+    const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+    for(let p=0;p<N*N;p++){
+      const k=srv[p];if(k<0)continue;
+      let col,alpha;
+      if(k===selIdx){col=hex('#005AFF');alpha=150;}
+      else if(t1Set.has(k)){col=hex(MAP_PALETTE[k%MAP_PALETTE.length]);alpha=110;}
+      else if(t2Set.has(k)){col=hex(MAP_PALETTE[k%MAP_PALETTE.length]);alpha=55;}
+      else{col=hex(MAP_PALETTE[k%MAP_PALETTE.length]);alpha=20;}
+      img.data[p*4]=col[0];img.data[p*4+1]=col[1];img.data[p*4+2]=col[2];img.data[p*4+3]=alpha;
+    }
+    ctx.putImageData(img,0,0);
+    return {
+      url:cv.toDataURL(),
+      bounds:[[lat0-R/ky,lon0-R/kx],[lat0+R/ky,lon0+R/kx]],
+      t1:fd.t1Ext.map(e=>({...e.ext.c,borderPx:e.borderPx})),
+      t2:fd.t2Ext.map(e=>e.ext.c),
+      selName:`${selSite.site.name}_S${selSec.idx+1}`,selSiteName:selSite.site.name,
+      selPx:fd.fpCount,beamWidth:HP,gridR:R,
+    };
+  },[bsOn,results,activeSite,activeTab]);
+
+  // Auto length: 20% of minimum inter-site distance (planned↔neighbour and planned↔planned)
+  const autoLen=useMemo(()=>{
+    if(!results||!results.length) return 1.0;
+    let minDist=Infinity;
+    results.forEach(({sectorResults})=>{
+      sectorResults.forEach(sec=>{
+        sec.externalNeighbors.forEach(nb=>{ if(nb.dist>0.05) minDist=Math.min(minDist,nb.dist); });
+      });
+    });
+    for(let i=0;i<results.length;i++) for(let j=i+1;j<results.length;j++){
+      const lat1=parseFloat(results[i].site.lat),lon1=parseFloat(results[i].site.lon);
+      const lat2=parseFloat(results[j].site.lat),lon2=parseFloat(results[j].site.lon);
+      if(!isNaN(lat1)&&!isNaN(lon1)&&!isNaN(lat2)&&!isNaN(lon2)){
+        const d=haversineKm(lat1,lon1,lat2,lon2);
+        if(d>0.05) minDist=Math.min(minDist,d);
+      }
+    }
+    return minDist===Infinity?1.0:Math.max(0.2,minDist*0.20);
+  },[results]);
+
+  useEffect(()=>{
+    if(!divRef.current||!results||!results.length) return;
+
+    // Init Leaflet map once
+    if(!mapRef.current){
+      const lats=results.map(r=>parseFloat(r.site.lat)).filter(x=>!isNaN(x));
+      const lons=results.map(r=>parseFloat(r.site.lon)).filter(x=>!isNaN(x));
+      const clat=lats.reduce((a,b)=>a+b,0)/lats.length;
+      const clon=lons.reduce((a,b)=>a+b,0)/lons.length;
+      mapRef.current=L.map(divRef.current,{preferCanvas:true}).setView([clat,clon],12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',maxZoom:19
+      }).addTo(mapRef.current);
+    }
+
+    // Invalidate size after show (fixes blank tile issue)
+    mapRef.current.invalidateSize();
+
+    // Remove old layers
+    layers.current.forEach(l=>l.remove());
+    layers.current=[];
+
+    const M=mapRef.current;
+
+    // Best-server footprint overlay — drawn under wedges/lines
+    if(bs){
+      const ov=L.imageOverlay(bs.url,bs.bounds,{opacity:0.85,interactive:false,className:'bs-overlay'});
+      ov.addTo(M);layers.current.push(ov);
+    }
+    const bw=mapBW;
+    const rKm=mapLenKm!==null?mapLenKm:autoLen;
+
+    const selSite=results[activeSite];
+    const selSec=selSite?.sectorResults?.[activeTab];
+    const selLat=parseFloat(selSite?.site?.lat);
+    const selLon=parseFloat(selSite?.site?.lon);
+
+    // Build set of neighbour site names for the selected sector (all tiers)
+    const nbSiteNames=new Set();
+    const nbCellNames=new Set();
+    if(selSec){
+      selSec.externalNeighbors.forEach(nb=>{
+        if(nb.siteName) nbSiteNames.add(nb.siteName);
+        if(nb.cellName) nbCellNames.add(nb.cellName);
+      });
+    }
+
+    // Group existing cells by siteName for full-site wedge rendering
+    const cellsBySite={};
+    cells.forEach(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return;
+      const sn=c.siteName||c.cellName||'__nosite';
+      if(!cellsBySite[sn]) cellsBySite[sn]=[]; cellsBySite[sn].push(c);
+    });
+
+    // Background cells — grey dots for non-neighbour sites, wedges for neighbour sites
+    cells.forEach(c=>{
+      if(isNaN(c.lat)||isNaN(c.lon)) return;
+      const isNbSite=nbSiteNames.has(c.siteName)||nbCellNames.has(c.cellName);
+      if(isNbSite) return; // drawn separately as wedges below
+      const mk=L.circleMarker([c.lat,c.lon],{radius:3,color:'#888',fillColor:'#bbb',fillOpacity:0.45,weight:0.5});
+      mk.bindTooltip(`${c.cellName||''} · Az ${c.azimuth!=null?c.azimuth+'°':'—'} · BCCH ${c.bcch!=null?c.bcch:'—'}`,{sticky:true,className:'lf-tip'});
+      mk.addTo(M); layers.current.push(mk);
+    });
+
+    // Neighbour site wedges — draw ALL sectors of each neighbour site
+    if(selSec){
+      // Collect tier + tierLabel per cell name for border colour and tooltip
+      const nbTierMap={};    // cellName → tier number
+      const nbLabelMap={};   // cellName → tierLabel
+      selSec.externalNeighbors.forEach(nb=>{
+        if(nb.cellName){ nbTierMap[nb.cellName]=nb.tier; nbLabelMap[nb.cellName]=nb.tierLabel||String(nb.tier); }
+      });
+
+      const drawnNbSites=new Set();
+      selSec.externalNeighbors.forEach(nb=>{
+        if(isNaN(nb.lat)||isNaN(nb.lon)) return;
+        const sn=nb.siteName||nb.cellName;
+        if(drawnNbSites.has(sn)) return; drawnNbSites.add(sn);
+        // All cells at this site (same siteName)
+        const siteCells=nb.siteName
+          ? cells.filter(c=>c.siteName===nb.siteName&&!isNaN(c.lat)&&!isNaN(c.lon))
+          : cells.filter(c=>c.cellName===nb.cellName&&!isNaN(c.lat)&&!isNaN(c.lon));
+        // Also include the neighbour itself in case it's missing from cells list
+        const toRender=siteCells.length?siteCells:[nb];
+
+        toRender.forEach(c=>{
+          const az=parseFloat(c.azimuth)||0;
+          const col=bcchToColor(c.bcch);
+          const cellTier=nbTierMap[c.cellName];
+          const cellLabel=nbLabelMap[c.cellName];
+          // Per-cell border colour based on effective tier (T2~ is tier=2 → blue, not orange)
+          const cellBorderCol=cellTier===1?'#ff6b00':cellTier===2?'#1565c0':'#555';
+          const wedge=sectorWedge(c.lat,c.lon,az,bw,rKm*0.85);
+          const poly=L.polygon(wedge,{
+            color:cellBorderCol,
+            fillColor:col,fillOpacity:0.45,weight:1.5,dashArray:'5,3'
+          });
+          const tierDisp=cellLabel?cellLabel.replace('1st','T1').replace('2nd','T2').replace('3rd','T3').replace('(upgraded)','↑').replace('(downgraded)','↓').replace('(shadowed)','~'):'';
+          poly.bindTooltip(
+            `${c.cellName}${tierDisp?' · '+tierDisp:''} · BCCH ${c.bcch!=null?c.bcch:'—'}`,
+            {sticky:true,className:'lf-tip'}
+          );
+          poly.addTo(M); layers.current.push(poly);
+        });
+
+        // Site label for neighbour site
+        const lpos=[nb.lat,nb.lon];
+        const nlbl=L.marker(lpos,{icon:L.divIcon({
+          html:`<div style="font-size:9px;color:#444;background:rgba(255,255,255,0.8);padding:1px 3px;border-radius:2px;white-space:nowrap;border:0.5px solid #aaa">${sn}</div>`,
+          iconAnchor:[0,-2],className:''
+        })});
+        nlbl.addTo(M); layers.current.push(nlbl);
+      });
+
+      // Neighbour lines — tip of selected sector wedge → tip of neighbour sector wedge
+      if(!isNaN(selLat)&&!isNaN(selLon)){
+        const srcTip=destPoint(selLat,selLon,selSec.az,rKm);
+        selSec.externalNeighbors.forEach(nb=>{
+          if(isNaN(nb.lat)||isNaN(nb.lon)) return;
+          const nbAz=parseFloat(nb.azimuth)||0;
+          const nbTip=destPoint(nb.lat,nb.lon,nbAz,rKm*0.85);
+          const t1=nb.tier===1;
+          const ln=L.polyline([srcTip,nbTip],{
+            color:t1?'#ff6b00':'#1565c0',weight:t1?2.5:1.5,
+            dashArray:t1?null:'7,5',opacity:0.8
+          });
+          ln.bindTooltip(
+            `<b>${nb.cellName}</b> · T${nb.tier} · ${nb.dist!=null?nb.dist.toFixed(1):'?'} km<br/>BCCH ${nb.bcch!=null?nb.bcch:'—'} · BSIC ${nb.ncc!=null?`${nb.ncc}/${nb.bcc}`:'—'}`,
+            {sticky:true,className:'lf-tip'}
+          );
+          ln.addTo(M); layers.current.push(ln);
+        });
+      }
+    }
+
+    // Planned sector wedges
+    results.forEach(({site,sectorResults},si)=>{
+      const lat=parseFloat(site.lat),lon=parseFloat(site.lon);
+      if(isNaN(lat)||isNaN(lon)) return;
+      sectorResults.forEach((sec,ti)=>{
+        const sel=si===activeSite&&ti===activeTab;
+        const col=bcchToColor(sec.bcch);
+        const wedge=sectorWedge(lat,lon,sec.az,bw,rKm);
+        const poly=L.polygon(wedge,{
+          color:sel?'#fff':col,fillColor:col,
+          fillOpacity:sel?0.9:0.55,weight:sel?2.5:1.5
+        });
+        poly.bindPopup(
+          `<div style="font-size:12px;line-height:1.6">
+            <b style="font-size:13px">${site.name} · S${sec.idx+1}</b><br/>
+            Az ${sec.az}° ${dirLabel(sec.az)}<br/>
+            BCCH <b>${sec.bcch!=null?sec.bcch:'—'}</b>
+            <span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:2px;margin-left:4px;vertical-align:middle"></span><br/>
+            TCH 900: ${sec.tch900List.length?sec.tch900List.join(', '):'—'}<br/>
+            TCH 1800: ${sec.tch1800List.length?sec.tch1800List.join(', '):'—'}<br/>
+            BSIC ${sec.bsic} (${sec.bsicDec})<br/>
+            T1/T2/T3: ${sec.stats.tier1Count} / ${sec.stats.tier2Count} / ${sec.stats.tier3Count}
+          </div>`,{maxWidth:220}
+        );
+        poly.on('click',()=>{setActiveSite(si);setActiveTab(ti);});
+        poly.addTo(M); layers.current.push(poly);
+      });
+      // Site label
+      const lbl=L.marker([lat,lon],{icon:L.divIcon({
+        html:`<div style="font-size:10px;font-weight:600;color:#111;background:rgba(255,255,255,0.85);padding:1px 4px;border-radius:3px;white-space:nowrap;border:0.5px solid #ccc">${site.name}</div>`,
+        iconAnchor:[0,-4],className:''
+      })});
+      lbl.addTo(M); layers.current.push(lbl);
+    });
+
+    // First open: fit all planned sites into view
+    if(!initialFitDone.current){
+      const pts=results.map(r=>[parseFloat(r.site.lat),parseFloat(r.site.lon)]).filter(p=>!isNaN(p[0])&&!isNaN(p[1]));
+      if(pts.length>1) M.fitBounds(pts,{padding:[50,50]});
+      else if(pts.length===1) M.setView(pts[0],13);
+      initialFitDone.current=true;
+    } else {
+      // Sector selected: zoom to selected site + its neighbour sites
+      const focusPts=[];
+      if(!isNaN(selLat)&&!isNaN(selLon)) focusPts.push([selLat,selLon]);
+      if(selSec) selSec.externalNeighbors.forEach(nb=>{
+        if(!isNaN(nb.lat)&&!isNaN(nb.lon)) focusPts.push([nb.lat,nb.lon]);
+      });
+      if(focusPts.length>1) M.fitBounds(focusPts,{padding:[60,60],maxZoom:14});
+      else if(focusPts.length===1) M.setView(focusPts[0],14);
+    }
+
+  },[results,activeSite,activeTab,visible,cfg,mapBW,mapLenKm,autoLen,bs]);
+
+  return (
+    <div>
+      {/* Map display controls */}
+      <div style={{display:'flex',gap:'16px',alignItems:'center',flexWrap:'wrap',marginBottom:'8px',padding:'6px 10px',background:'var(--color-background-secondary)',borderRadius:'6px',border:'0.5px solid var(--color-border-tertiary)',fontSize:'12px'}}>
+        <label style={{display:'flex',alignItems:'center',gap:'6px',color:'var(--color-text-secondary)'}}>
+          Beam width
+          <input type="number" min="5" max="120" value={mapBW}
+            onChange={e=>setMapBW(Math.max(5,Math.min(120,+e.target.value||30)))}
+            style={{width:'52px',padding:'2px 5px',border:'0.5px solid var(--color-border-secondary)',borderRadius:'4px',fontSize:'12px',textAlign:'center'}}/>
+          °
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:'6px',color:'var(--color-text-secondary)'}}>
+          Wedge length
+          <input type="number" min="0.1" step="0.05"
+            value={mapLenKm!==null?mapLenKm:''}
+            placeholder={`${autoLen.toFixed(2)}`}
+            onChange={e=>setMapLenKm(e.target.value===''?null:Math.max(0.1,+e.target.value))}
+            style={{width:'70px',padding:'2px 5px',border:'0.5px solid var(--color-border-secondary)',borderRadius:'4px',fontSize:'12px',textAlign:'center'}}/>
+          km
+          {mapLenKm!==null&&
+            <button onClick={()=>setMapLenKm(null)}
+              style={{fontSize:'11px',padding:'1px 8px',cursor:'pointer',borderRadius:'4px',border:'0.5px solid var(--color-border-secondary)',background:'var(--color-background-primary)',color:'var(--color-text-secondary)'}}>
+              auto
+            </button>}
+        </label>
+        <span style={{color:'var(--color-text-tertiary)',fontSize:'11px'}}>auto = {autoLen.toFixed(2)} km</span>
+        <label style={{display:'flex',alignItems:'center',gap:'6px',color:'var(--color-text-secondary)',marginLeft:'auto',cursor:'pointer'}}>
+          <input type="checkbox" checked={bsOn} onChange={e=>setBsOn(e.target.checked)}/>
+          Best-server footprints
+        </label>
+      </div>
+      <div ref={divRef} style={{height:'540px',width:'100%',borderRadius:'var(--border-radius-lg)',overflow:'hidden',border:'0.5px solid var(--color-border-tertiary)',background:'#e8e8e8'}}/>
+      {bs&&(
+          <div style={{marginTop:'10px',padding:'12px 14px',background:'var(--color-background-primary)',border:'0.5px solid var(--color-border-tertiary)',borderRadius:'8px',fontSize:'12px'}}>
+            <div style={{fontWeight:600,marginBottom:'8px'}}>Best-server footprints — {bs.selName}
+              <span style={{fontWeight:400,color:'var(--color-text-tertiary)',marginLeft:'8px',fontSize:'11px'}}>the exact grid used to choose this sector's T1/T2, rendered as-is (not recomputed)</span>
+            </div>
+            {bs.selPx===0&&<div style={{background:'var(--color-background-danger)',border:'0.5px solid var(--color-border-danger)',color:'var(--color-text-danger)',borderRadius:'4px',padding:'6px 10px',marginBottom:'8px',fontSize:'11px'}}>
+              ⚠ This sector's footprint is empty — another cell wins every pixel (check for a co-located cell with identical azimuth in the input data). The T1/T2 lists below are not meaningful for this sector.
+            </div>}
+            <div style={{marginBottom:'6px'}}>
+              <span style={{color:'var(--color-text-tertiary)',fontSize:'11px'}}>T1 — footprint borders this sector (ranked by distance-weighted border score): </span><br/>
+              {bs.t1.length===0&&<span style={{color:'var(--color-text-tertiary)'}}>—</span>}
+              {bs.t1.map(c=>(
+                <span key={c.cellName} style={{display:'inline-block',margin:'2px',padding:'2px 7px',borderRadius:'4px',fontFamily:'var(--font-mono)',fontSize:'11px',
+                  background:'var(--color-background-secondary)',border:'0.5px solid var(--color-border-tertiary)',color:'var(--color-text-secondary)'}}>
+                  {c.cellName} · {c.borderPx}px
+                </span>
+              ))}
+            </div>
+            <div style={{fontSize:'11px',color:'var(--color-text-tertiary)'}}>
+              T2 — borders a T1 footprint: {bs.t2.map(c=>c.cellName).join(', ')||'—'}
+            </div>
+            <div style={{fontSize:'11px',color:'var(--color-text-tertiary)',marginTop:'6px',borderTop:'0.5px solid var(--color-border-tertiary)',paddingTop:'6px'}}>
+              Model: RSL = −35·log₁₀(d) + G(θ) · G = −min(25, 12·(θ/{bs.beamWidth})²) dB · uniform power/height, no terrain ·
+              overlay: <b style={{color:'var(--nokia-blue)'}}>blue</b> = this sector's footprint, solid = T1, faint = T2, faintest = others · grid ±{bs.gridR.toFixed(0)} km
+            </div>
+          </div>
+      )}
+      <div style={{display:'flex',gap:'20px',flexWrap:'wrap',marginTop:'10px',fontSize:'11px',color:'var(--color-text-tertiary)',alignItems:'center'}}>
+        <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+          <span style={{display:'inline-block',width:'22px',height:'3px',background:'#ff6b00'}}/> T1 neighbour
+        </span>
+        <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+          <span style={{display:'inline-block',width:'22px',height:'0',borderTop:'2.5px dashed #1565c0'}}/> T2 neighbour
+        </span>
+        <span>Sector fill colour = BCCH (same colour = same BCCH)</span>
+        <span>Grey dots = existing network · Click a sector wedge for details</span>
+      </div>
+    </div>
+  );
+}
+
+const CFG_KEY="fp2g_v2_cfg", MAP_KEY="fp2g_v2_maps";
+const loadLS=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??fb;}catch{return fb;}};
+
+function FreqPlanner() {
+  const [step,setStep]=useState(1);
+  const [gisData,setGisData]=useState(null);    const [gisMap,setGisMap]=useState({});
+  const [paramData,setParamData]=useState(null); const [paramMap,setParamMap]=useState({});
+  const [nsData,setNsData]=useState(null);       const [nsMap,setNsMap]=useState({});
+  const [savedMaps]=useState(()=>loadLS(MAP_KEY,{}));
+  const [cells,setCells]=useState([]);
+  const [plannedSites,setPlannedSites]=useState([]);
+  // Config restored from the last session (localStorage) on top of the defaults.
+  const [cfg,setCfg]=useState(()=>({searchRadius:10,beamWidth:65,nccStr:"0-7",maxNeighbours:10,bsicRadius:50,maxPasses:3,bands:DEFAULT_BANDS,...loadLS(CFG_KEY,{})}));
+  const [results,setResults]=useState(null);
+  const [activeSite,setActiveSite]=useState(0);
+  const [activeTab,setActiveTab]=useState(0);
+  const [showMap,setShowMap]=useState(false);
+  const [err,setErr]=useState("");
+  const [planning,setPlanning]=useState(false);
+  const [planProgress,setPlanProgress]=useState({pass:1,site:0,total:0,totalPasses:1,locked:0});
+
+  const updBand=(i,k,v)=>setCfg(c=>({...c,bands:c.bands.map((b,j)=>j===i?{...b,[k]:v}:b)}));
+
+  // Restore the last-used column mapping wherever the saved header still exists in this file;
+  // auto-detection fills the rest.
+  const mergeSaved=(auto,saved,headers)=>{
+    if(!saved) return auto;
+    const out={...auto};
+    Object.entries(saved).forEach(([k,v])=>{if(v&&headers.includes(v))out[k]=v;});
+    return out;
+  };
+  const onGisLoad=d=>{setGisData(d);setGisMap(mergeSaved(detectGISCols(d.headers),savedMaps.gis,d.headers));};
+  const onParamLoad=d=>{setParamData(d);setParamMap(mergeSaved(detectParamCols(d.headers),savedMaps.param,d.headers));};
+  const onNsLoad=d=>{setNsData(d);setNsMap(mergeSaved(detectNewSitesCols(d.headers),savedMaps.ns,d.headers));};
+
+  useEffect(()=>{try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch{}},[cfg]);
+  useEffect(()=>{
+    if(gisData||paramData||nsData){try{localStorage.setItem(MAP_KEY,JSON.stringify({gis:gisMap,param:paramMap,ns:nsMap}));}catch{}}
+  },[gisMap,paramMap,nsMap]);
+
+  const processAll=()=>{
+    if(!gisData||!paramData||!nsData){setErr("Upload all three files first");return;}
+    // Build parameter lookup
+    const pLookup={};
+    paramData.rows.forEach(row=>{
+      const name=row[paramMap.cellName]?.trim();if(!name)return;
+      let ncc=parseInt(row[paramMap.ncc]),bcc=parseInt(row[paramMap.bcc]);
+      if(paramMap.bsic&&(isNaN(ncc)||isNaN(bcc))){const bs=parseInt(row[paramMap.bsic]);if(!isNaN(bs)){ncc=bs>>3;bcc=bs&7;}}
+      const tchList=(row[paramMap.tch]||"").split(/[\s,;]+/).map(Number).filter(n=>!isNaN(n)&&n>0);
+      const lac=paramMap.lac?parseInt(row[paramMap.lac]):NaN;
+      const rac=paramMap.rac?parseInt(row[paramMap.rac]):NaN;
+      const bsc=paramMap.bsc?row[paramMap.bsc]?.trim()||null:null;
+      const bcchV=parseInt(row[paramMap.bcch]); // parseInt||null would turn valid ARFCN 0 into null
+      pLookup[name]={bcch:isNaN(bcchV)?null:bcchV,tchList,ncc:isNaN(ncc)?null:ncc,bcc:isNaN(bcc)?null:bcc,lac:isNaN(lac)?null:lac,rac:isNaN(rac)?null:rac,bsc};
+    });
+    // Merge GIS + params
+    const merged=gisData.rows.map(row=>{
+      const cellName=row[gisMap.cellName]?.trim(),siteName=row[gisMap.siteName]?.trim();
+      const lat=parseFloat(row[gisMap.lat]),lon=parseFloat(row[gisMap.lon]);
+      const azimuth=parseFloat(row[gisMap.azimuth])||0;
+      if(!cellName||isNaN(lat)||isNaN(lon))return null;
+      return{cellName,siteName,lat,lon,azimuth,...(pLookup[cellName]||{})};
+    }).filter(Boolean);
+    if(!merged.length){setErr("No cells merged from GIS — check column mappings");return;}
+    // Parse new sites
+    const sites=buildPlannedSites(nsData.rows,nsMap);
+    if(!sites.length){setErr("No valid rows in new sites CSV — check column mappings");return;}
+    setCells(merged);
+    setPlannedSites(sites);
+    setErr("");setStep(2);
+  };
+
+  const runPlan=async()=>{
+    for(const s of plannedSites){
+      if(isNaN(parseFloat(s.lat))||isNaN(parseFloat(s.lon))){setErr(`Invalid coords for ${s.name}`);return;}
+    }
+    setErr("");
+    setPlanning(true);
+    setPlanProgress({pass:1,site:0,total:plannedSites.length,totalPasses:cfg.maxPasses,locked:0});
+    try {
+      const res=await planAllSites(plannedSites,cells,cfg,(pass,site,total,totalPasses,locked)=>{
+        setPlanProgress({pass,site,total,totalPasses,locked});
+      });
+      setResults(res);setActiveSite(0);setActiveTab(0);setStep(3);
+    } catch(ex) {
+      console.error(ex);
+      setErr("Planning failed: "+(ex?.message||ex));
+    } finally {
+      setPlanning(false);
+    }
+  };
+
+  const cur=results?.[activeSite];
+  const sec=cur?.sectorResults?.[activeTab];
+
+  return(
+    <div>
+      <div style={CARD}>
+        <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:260}}>
+            <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>2G Frequency Planner v2</div>
+            <div style={{fontSize:13,color:"var(--color-text-secondary)"}}>
+              Upload existing network data + new sites → get BCCH, TCH, BSIC, LAC/RAC/BSC per sector.
+            </div>
+          </div>
+          <Steps current={step} onNav={setStep} canGo={[cells.length?2:0,results?3:0]}/>
+        </div>
+      </div>
+      {err&&<div style={{background:"var(--color-background-danger)",border:"1px solid var(--color-border-danger)",color:"var(--color-text-danger)",padding:"10px 14px",borderRadius:"var(--border-radius-lg)",marginBottom:"16px",fontSize:"13px"}}>⚠ {err}</div>}
+
+      {/* ── STEP 1: Upload all three files ── */}
+      {step===1&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px"}}>
+            {/* GIS */}
+            <div>
+              <FileBlock id="gis-f" title="GIS database" hint="Sites · cells · lat/lon · azimuth"
+                note="CSV or XLSX. Must contain one row per cell/sector of the existing network."
+                data={gisData} onLoad={onGisLoad}/>
+              {gisData&&<div style={{...CARD,marginTop:"-4px"}}>
+                <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
+                <ColMapper headers={gisData.headers} mapping={gisMap} onChange={setGisMap}
+                  fields={{siteName:"Site name",cellName:"Cell name *",lat:"Latitude *",lon:"Longitude *",azimuth:"Azimuth"}}/>
+              </div>}
+            </div>
+
+            {/* Parameter dump */}
+            <div>
+              <FileBlock id="par-f" title="Nokia CMExport parameters"
+                hint="2G.Summary.DDMMYY.xlsx · sheet: Cell Details"
+                note='Opens directly from your CMExport folder. Auto-selects "Cell Details" sheet.'
+                data={paramData} onLoad={onParamLoad} sheetHint="Cell Details"/>
+              {paramData&&<div style={{...CARD,marginTop:"-4px"}}>
+                <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
+                <ColMapper headers={paramData.headers} mapping={paramMap} onChange={setParamMap}
+                  fields={{cellName:"Cell name *",bcch:"BCCH *",tch:"TCH / MA list",ncc:"NCC",bcc:"BCC",bsic:"BSIC (alt)",lac:"LAC",rac:"RAC",bsc:"BSC"}}/>
+              </div>}
+            </div>
+
+            {/* New sites */}
+            <div>
+              <FileBlock id="ns-f" title="New sites to plan"
+                hint="One row per sector · Site Name, Lat, Lon, Azimuth, TRX_900, TRX_1800"
+                note="Multiple rows with the same Site Name = multiple sectors of that site. TRX_900 = 0 means no 900 band for that cell."
+                data={nsData} onLoad={onNsLoad}/>
+              {nsData&&<div style={{...CARD,marginTop:"-4px"}}>
+                <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
+                <ColMapper headers={nsData.headers} mapping={nsMap} onChange={setNsMap}
+                  fields={{siteName:"Site name *",siteId:"Site ID",lat:"Latitude *",lon:"Longitude *",azimuth:"Azimuth *",trx900:"TRX_900 *",trx1800:"TRX_1800 *"}}/>
+                {/* Preview */}
+                {nsData.rows.length>0&&nsMap.siteName&&(()=>{
+                  const preview=buildPlannedSites(nsData.rows,nsMap);
+                  return preview.length>0&&(
+                    <div style={{marginTop:"10px",fontSize:"12px"}}>
+                      <div style={{color:"var(--color-text-secondary)",marginBottom:"6px"}}>Parsed: {preview.length} site{preview.length>1?"s":""}, {preview.reduce((s,p)=>s+p.sectors.length,0)} sectors total</div>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:"11px",fontFamily:"var(--font-mono)"}}>
+                        <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                          {["Site","Sec","Az°","T900","T1800"].map(h=><th key={h} style={{padding:"3px 6px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left"}}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {preview.flatMap(p=>p.sectors.map((s,i)=>(
+                            <tr key={`${p.name}-${i}`} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
+                              <td style={{padding:"3px 6px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"80px"}}>{i===0?p.name:""}</td>
+                              <td style={{padding:"3px 6px",color:"var(--color-text-tertiary)"}}>S{i+1}</td>
+                              <td style={{padding:"3px 6px"}}>{s.azimuth}°</td>
+                              <td style={{padding:"3px 6px",color:s.trx900>0?"var(--color-text-warning)":"var(--color-text-tertiary)"}}>{s.trx900}</td>
+                              <td style={{padding:"3px 6px",color:s.trx1800>0?"var(--color-text-info)":"var(--color-text-tertiary)"}}>{s.trx1800}</td>
+                            </tr>
+                          )))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>}
+            </div>
+          </div>
+
+          {gisData&&paramData&&nsData&&<button className="primary" style={{marginTop:"8px"}} onClick={processAll}>Process all files and continue →</button>}
+        </div>
+      )}
+
+      {/* ── STEP 2: Algorithm + band config ── */}
+      {step===2&&(
+        <div>
+          <div style={{fontSize:"12px",color:"var(--color-text-secondary)",marginBottom:"16px"}}>
+            {cells.length.toLocaleString()} existing cells · {plannedSites.length} new site{plannedSites.length>1?"s":""} · {plannedSites.reduce((s,p)=>s+p.sectors.length,0)} sectors to plan
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
+            <div style={CARD}>
+              <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"14px"}}>Algorithm parameters</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                <div>
+                  <div style={FN}>Search radius (km)</div>
+                  <input type="text" value={cfg.searchRadius}
+                    onChange={e=>setCfg(c=>({...c,searchRadius:parseFloat(e.target.value)||5}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Urban: 3–5 km · Rural: 8–15 km</div>
+                </div>
+                <div>
+                  <div style={FN}>BSIC uniqueness radius (km)</div>
+                  <input type="text" value={cfg.bsicRadius}
+                    onChange={e=>setCfg(c=>({...c,bsicRadius:parseFloat(e.target.value)||50}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>BSIC+BCCH combo unique within this distance; retries at 80% steps</div>
+                </div>
+                <div>
+                  <div style={FN}>Beam width (°)</div>
+                  <input type="text" value={cfg.beamWidth}
+                    onChange={e=>setCfg(c=>({...c,beamWidth:parseFloat(e.target.value)||130}))} style={MONO}/>
+                </div>
+                <div>
+                  <div style={FN}>NCC pool</div>
+                  <input type="text" value={cfg.nccStr}
+                    onChange={e=>setCfg(c=>({...c,nccStr:e.target.value}))} style={MONO}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>e.g. 0-7 or 2,4,6</div>
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <div style={FN}>Max external neighbours per sector</div>
+                  <input type="text" value={cfg.maxNeighbours}
+                    onChange={e=>setCfg(c=>({...c,maxNeighbours:parseInt(e.target.value)||10}))} style={{...MONO,width:"100px"}}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>All T1 are ALWAYS kept (even if more than this, even beyond search radius); T2 within search radius fills the remaining slots</div>
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <div style={FN}>Planning passes (multi-pass refinement)</div>
+                  <input type="text" value={cfg.maxPasses}
+                    onChange={e=>setCfg(c=>({...c,maxPasses:Math.max(1,parseInt(e.target.value)||3)}))} style={{...MONO,width:"100px"}}/>
+                  <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"2px"}}>Pass 1 is sequential greedy (hardest sites first); passes 2+ re-plan each site against all other sites' latest frequencies (Gauss-Seidel). A targeted repair pass runs at the end. Higher = better quality, slower.</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={CARD}>
+              <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"4px"}}>Band ARFCN pools</div>
+              <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"12px"}}>
+                Band 1 = 900 (BCCH + TCH). Band 2 = 1800 (TCH only for dual-band cells). Ranges: 76-87, lists: 88-101, 123, 124.
+              </div>
+              {cfg.bands.map((bd,i)=>{
+                const bp=getBcchPool(bd),tp=getTchPool(bd);
+                return(
+                  <div key={bd.id} style={{marginBottom:"14px",paddingBottom:"14px",borderBottom:i<cfg.bands.length-1?"0.5px solid var(--color-border-tertiary)":"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}}>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",minWidth:"50px"}}>Band {i+1}</div>
+                      <input value={bd.name} onChange={e=>updBand(i,"name",e.target.value)} style={{...MONO,fontWeight:"500",width:"110px"}}/>
+                      <span style={{fontSize:"11px",color:"var(--color-text-tertiary)"}}>{bp.length} BCCH · {tp.length} TCH</span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+                      <div>
+                        <div style={FN}>BCCH ARFCNs</div>
+                        <input value={bd.bcchStr} onChange={e=>updBand(i,"bcchStr",e.target.value)} style={{...MONO,width:"100%"}} placeholder="e.g. 76-87"/>
+                        {bp.length>0&&<div style={{fontSize:"11px",color:"var(--color-text-success)",marginTop:"2px"}}>→ {arfcnListToStr(bp)} ({bp.length})</div>}
+                      </div>
+                      <div>
+                        <div style={FN}>TCH ARFCNs</div>
+                        <input value={bd.tchStr} onChange={e=>updBand(i,"tchStr",e.target.value)} style={{...MONO,width:"100%"}} placeholder="e.g. 88-101, 123, 124"/>
+                        {tp.length>0&&<div style={{fontSize:"11px",color:"var(--color-text-success)",marginTop:"2px"}}>→ {arfcnListToStr(tp)} ({tp.length})</div>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{fontSize:"12px",color:"var(--color-text-secondary)",background:"var(--color-background-secondary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-md)",padding:"10px 14px",marginBottom:"12px"}}>
+            TCH count is derived per sector from your CSV: <strong>900 TCH = TRX_900 − 1</strong> (one TRX carries BCCH) · <strong>1800 TCH = TRX_1800</strong> (all TCH, BCCH stays on 900). For 1800-only cells: BCCH on 1800, TCH = TRX_1800 − 1.
+            Sites are planned hardest-first (densest RF environment gets first pick of the clean spectrum); refinement passes then re-plan each site against all others' latest frequencies, and a final repair pass re-plans any degraded sectors.
+          </div>
+
+          <div style={{display:"flex",gap:"10px",alignItems:"center",flexWrap:"wrap"}}>
+            <button onClick={()=>setStep(1)} disabled={planning}>← Back</button>
+            {planning?(()=>{
+              const totalWork=planProgress.totalPasses*planProgress.total;
+              const doneWork=(planProgress.pass-1)*planProgress.total+planProgress.site;
+              const pct=totalWork>0?Math.min(100,Math.round(doneWork/totalWork*100)):0;
+              return(
+                <div style={{flex:1,minWidth:"260px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:"var(--color-text-secondary)",marginBottom:"5px"}}>
+                    <span>
+                      Pass <b>{planProgress.pass}</b>/{planProgress.totalPasses}
+                      {planProgress.total>0&&<> · site {planProgress.site}/{planProgress.total}</>}
+                      {planProgress.locked>0&&<span style={{color:"var(--color-text-tertiary)"}}> · {planProgress.locked} locked ⚡</span>}
+                    </span>
+                    <span style={{fontFamily:"var(--font-mono)",color:"var(--color-text-tertiary)"}}>{pct}%</span>
+                  </div>
+                  <div style={{height:"6px",background:"var(--color-background-secondary)",borderRadius:"3px",overflow:"hidden",border:"0.5px solid var(--color-border-tertiary)"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:"var(--nokia-blue)",borderRadius:"3px",transition:"width 0.15s ease"}}/>
+                  </div>
+                </div>
+              );
+            })():(
+              <button className="primary" onClick={runPlan}>Plan {plannedSites.length} site{plannedSites.length>1?"s":""} →</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: Results ── */}
+      {step===3&&results&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",marginBottom:"16px"}}>
+            <div style={{fontSize:"15px",fontWeight:"500"}}>{results.length} site{results.length>1?"s":""} planned</div>
+            <div style={{marginLeft:"auto",display:"flex",gap:"8px"}}>
+              <button onClick={()=>setStep(2)}>← Reconfigure</button>
+              <button onClick={()=>setShowMap(m=>!m)} style={{fontFamily:"var(--font-mono)",fontSize:"12px"}}>
+                {showMap?'📋 Details':'🗺 Map'}
+              </button>
+              <button className="primary" onClick={()=>exportAll(results)}>Export XLSX ↗</button>
+            </div>
+          </div>
+
+          {/* Map view */}
+          <div style={{display:showMap?'block':'none',marginBottom:'16px'}}>
+            <PlanMap results={results} cells={cells} activeSite={activeSite} setActiveSite={setActiveSite}
+              activeTab={activeTab} setActiveTab={setActiveTab} cfg={cfg} visible={showMap}/>
+          </div>
+
+          {/* Site selector */}
+          <div style={{display:"flex",gap:"8px",marginBottom:"16px",flexWrap:"wrap"}}>
+            {results.map(({site},i)=>(
+              <button key={i} onClick={()=>{setActiveSite(i);setActiveTab(0);}}
+                style={{fontSize:"12px",fontWeight:activeSite===i?"500":"400",fontFamily:"var(--font-mono)",padding:"6px 14px",borderRadius:"var(--border-radius-md)",
+                  background:activeSite===i?"var(--color-background-info)":"var(--color-background-secondary)",
+                  color:activeSite===i?"var(--color-text-info)":"var(--color-text-secondary)",
+                  border:`0.5px solid ${activeSite===i?"var(--color-border-info)":"var(--color-border-tertiary)"}`}}>
+                {site.name}
+              </button>
+            ))}
+          </div>
+
+          {cur&&(
+            <>
+              {/* Site summary table */}
+              <div style={{...CARD,marginBottom:"16px"}}>
+                <div style={{display:"flex",alignItems:"center",marginBottom:"10px"}}>
+                  <span style={{fontSize:"13px",fontWeight:"500"}}>{cur.site.name}</span>
+                </div>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)"}}>
+                    <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                      {["Sec","Az","T900/T1800","BCCH","BCCH","900 TCH","","1800 TCH","","BSIC","Dec","BSIC sep"].map((h,i)=>(
+                        <th key={i} style={{padding:"5px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {cur.sectorResults.map((r,i)=>(
+                        <tr key={i} onClick={()=>setActiveTab(i)}
+                          style={{borderBottom:"0.5px solid var(--color-border-tertiary)",cursor:"pointer",background:activeTab===i?"var(--color-background-secondary)":"transparent"}}>
+                          <td style={{padding:"5px 8px",fontWeight:"500"}}>S{r.idx+1}</td>
+                          <td style={{padding:"5px 8px"}}>{r.az}° {dirLabel(r.az)}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-tertiary)"}}>{r.trx900}/{r.trx1800}</td>
+                          <td style={{padding:"5px 8px",fontWeight:"500",color:"var(--color-text-warning)"}}>{r.bcch??"—"}</td>
+                          <td style={{padding:"5px 8px"}}><ModeBadge mode={r.bcchMode}/></td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",fontFamily:"var(--font-mono)",fontSize:"11px"}}>{r.tch900List.length?r.tch900List.join(" "):"—"}</td>
+                          <td style={{padding:"5px 8px"}}>{r.tch900Count>0&&<ModeBadge mode={r.tch900Mode}/>}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",fontFamily:"var(--font-mono)",fontSize:"11px"}}>{r.tch1800List.length?r.tch1800List.join(" "):"—"}</td>
+                          <td style={{padding:"5px 8px"}}>{r.tch1800Count>0&&<ModeBadge mode={r.tch1800Mode}/>}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-info)"}}>{r.bsic}</td>
+                          <td style={{padding:"5px 8px",color:"var(--color-text-tertiary)"}}>{r.bsicDec??'—'}</td>
+                          <td style={{padding:"5px 8px",color:r.bsicRepeatDist!=null&&r.bsicRepeatDist<10?"var(--color-text-warning)":"var(--color-text-tertiary)",whiteSpace:"nowrap"}}>
+                            {r.bsicRepeatDist!=null?`${r.bsicRepeatDist.toFixed(1)} km`:"∞"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"6px"}}>Click a row for neighbour detail below.</div>
+              </div>
+
+              {/* Sector detail */}
+              {sec&&(
+                <div>
+                  <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"12px"}}>
+                    {cur.site.name} · S{sec.idx+1} — {sec.az}° {dirLabel(sec.az)}
+                    <span style={{fontWeight:"400",color:"var(--color-text-tertiary)",marginLeft:"10px",fontSize:"12px"}}>
+                      {sec.trx900} TRX on 900 + {sec.trx1800} TRX on 1800
+                      {sec.has900&&sec.has1800&&<> · dual-band, BCCH on 900</>}
+                      {sec.has900&&!sec.has1800&&<> · 900-only</>}
+                      {!sec.has900&&sec.has1800&&<> · 1800-only, BCCH on 1800</>}
+                    </span>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"12px",marginBottom:"16px"}}>
+                    {/* BCCH */}
+                    <div style={CARD}>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>BCCH ({sec.bcchBandName})</div>
+                      <div style={{fontFamily:"var(--font-mono)",fontSize:"26px",fontWeight:"500",color:"var(--color-text-warning)",marginBottom:"6px"}}>{sec.bcch??"—"}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}><ModeBadge mode={sec.bcchMode}/></div>
+                      {(sec.bcchMode==="t1_reuse"||sec.bcchMode==="t2_reuse")&&<div style={{fontSize:"11px",color:"var(--color-text-warning)",background:"var(--color-background-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"4px",padding:"5px 8px",marginBottom:"8px"}}>
+                        {sec.bcchMode==="t1_reuse"?"T1":"T2"} BCCH reuse. Differentiated by BSIC {sec.bsic}.
+                      </div>}
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"}}>T1 BCCHs: {(sec.tier1BCCHs||[]).map(b=><Pill key={b} n={b} type={b===sec.bcch?"warn":"default"}/>)||"—"}</div>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"6px",marginBottom:"3px"}}>All neighbour BCCHs:</div>
+                      <div>{sec.allNbBCCHs.slice(0,20).map(b=><Pill key={b} n={b} type={b===sec.bcch?"danger":"default"}/>)}{sec.allNbBCCHs.length>20&&<span style={{fontSize:"11px",color:"var(--color-text-tertiary)"}}> +{sec.allNbBCCHs.length-20}</span>}</div>
+                    </div>
+
+                    {/* TCH 900 */}
+                    <div style={CARD}>
+                      <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>
+                        900 MHz TCH ({sec.tch900Count} freq needed)
+                      </div>
+                      {sec.tch900Count===0
+                        ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No 900 TCH — BCCH TRX only</div>
+                        :<>
+                          <div style={{marginBottom:"8px"}}>{sec.tch900List.length?sec.tch900List.map(t=><Pill key={t} n={t} type="warn"/>):<span style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>—</span>}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}><ModeBadge mode={sec.tch900Mode}/></div>
+                          <div style={{fontSize:"12px",color:"var(--color-text-secondary)"}}>{sec.tch900List.length} assigned{sec.tch900List.length>1?` · span ${Math.max(...sec.tch900List)-Math.min(...sec.tch900List)} ch`:""}</div>
+                        </>
+                      }
+                    </div>
+
+                    {/* TCH 1800 + BSIC */}
+                    <div>
+                      <div style={{...CARD,marginBottom:"10px"}}>
+                        <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>
+                          1800 MHz TCH ({sec.tch1800Count} freq needed)
+                        </div>
+                        {sec.tch1800Count===0
+                          ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No 1800 band on this cell</div>
+                          :<>
+                            <div style={{marginBottom:"8px"}}>{sec.tch1800List.length?sec.tch1800List.map(t=><Pill key={t} n={t} type="info"/>):<span style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>—</span>}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}><ModeBadge mode={sec.tch1800Mode}/></div>
+                            <div style={{fontSize:"12px",color:"var(--color-text-secondary)"}}>{sec.tch1800List.length} assigned{sec.tch1800List.length>1?` · span ${Math.max(...sec.tch1800List)-Math.min(...sec.tch1800List)} ch`:""}</div>
+                          </>
+                        }
+                      </div>
+                      <div style={{...CARD,marginBottom:0}}>
+                        <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"6px",textTransform:"uppercase",letterSpacing:"0.5px"}}>BSIC</div>
+                        <div style={{fontFamily:"var(--font-mono)",fontSize:"22px",fontWeight:"500",color:"var(--color-text-info)",marginBottom:"4px"}}>{sec.bsic}</div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginTop:"6px"}}>
+                          {[["NCC",sec.ncc],["BCC",sec.bcc]].map(([l,v])=>(
+                            <div key={l} style={{background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"8px",textAlign:"center"}}>
+                              <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"}}>{l}</div>
+                              <div style={{fontFamily:"var(--font-mono)",fontSize:"18px",fontWeight:"500",color:"var(--color-text-info)"}}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{marginTop:"10px",background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"8px 10px"}}>
+                          <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"3px"}}>Min BSIC+BCCH repeat dist</div>
+                          <div style={{fontFamily:"var(--font-mono)",fontSize:"15px",fontWeight:"500",
+                            color:sec.bsicRepeatDist!=null&&sec.bsicRepeatDist<10?"var(--color-text-warning)":"var(--color-text-info)"}}>
+                            {sec.bsicRepeatDist!=null?`${sec.bsicRepeatDist.toFixed(1)} km`:"∞ unique"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Neighbour list */}
+                  <div style={CARD}>
+                    <div style={{fontSize:"13px",fontWeight:"500",marginBottom:"14px"}}>Neighbour cell list</div>
+
+                    <div style={{fontSize:"11px",fontWeight:"500",color:"var(--color-text-tertiary)",letterSpacing:"0.5px",marginBottom:"6px",textTransform:"uppercase"}}>Intra-site</div>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)",marginBottom:"16px"}}>
+                      <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                        {["Cell","Az","BCCH","900 TCH","1800 TCH","BSIC"].map(h=><th key={h} style={{padding:"4px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px"}}>{h}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {/* Other sectors of same site */}
+                        {cur.sectorResults.filter(s=>s.idx!==sec.idx).map(s=>(
+                          <tr key={s.idx} style={{borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
+                            <td style={{padding:"4px 8px",fontWeight:"500"}}>{cur.site.name}_S{s.idx+1}</td>
+                            <td style={{padding:"4px 8px"}}>{s.az}° {dirLabel(s.az)}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-warning)"}}>{s.bcch}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch900List.join(" ")||"—"}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-secondary)",fontSize:"11px"}}>{s.tch1800List.join(" ")||"—"}</td>
+                            <td style={{padding:"4px 8px",color:"var(--color-text-info)"}}>{s.bsic}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <div style={{fontSize:"11px",fontWeight:"500",color:"var(--color-text-tertiary)",letterSpacing:"0.5px",marginBottom:"4px",textTransform:"uppercase"}}>
+                      External {sec.externalNeighbors.length} shown · T1: {sec.stats.tier1Count} · T2: {sec.stats.tier2Count} · {sec.stats.total} in search range
+                    </div>
+                    <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginBottom:"8px",display:"flex",gap:"12px",flexWrap:"wrap"}}>
+                      <span><span style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T1</span> Shares a best-server dominance border — ranked by distance-weighted border length</span>
+                      <span><span style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 5px",fontSize:"10px",fontWeight:"500"}}>T2</span> Borders a T1 footprint — second ring</span>
+                    </div>
+                    {sec.externalNeighbors.length===0
+                      ?<div style={{fontSize:"12px",color:"var(--color-text-tertiary)"}}>No external neighbours in range.</div>
+                      :<div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px",fontFamily:"var(--font-mono)",tableLayout:"fixed"}}>
+                          <thead><tr style={{borderBottom:"0.5px solid var(--color-border-secondary)"}}>
+                            {["#","Cell","Site","km","Az","Bear","→ ovlp","← ovlp","BCCH","BSIC"].map((h,i)=>(
+                              <th key={h} style={{padding:"5px 8px",color:"var(--color-text-tertiary)",fontWeight:"400",textAlign:"left",fontSize:"11px",
+                                width:["36px","120px","100px","52px","50px","50px","68px","68px","50px","50px"][i]}}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {sec.externalNeighbors.map((nb,i)=>(
+                              <tr key={i} style={{borderBottom:"0.5px solid var(--color-border-tertiary)",background:i%2?"transparent":"var(--color-background-secondary)"}}>
+                                <td style={{padding:"5px 8px"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                                    <span style={{color:"var(--color-text-tertiary)",fontSize:"11px",minWidth:"14px"}}>{i+1}</span>
+                                    {nb.tier===1&&<span title={`Border score ${nb.nbScore?.toFixed(2)??''}`} style={{background:"var(--color-background-warning)",color:"var(--color-text-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T1</span>}
+                                    {nb.tier===2&&<span title={`Border score with T1 ring ${nb.nbScore?.toFixed(2)??''}`} style={{background:"var(--color-background-info)",color:"var(--color-text-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"3px",padding:"1px 4px",fontSize:"9px",fontWeight:"500",lineHeight:"1.4"}}>T2</span>}
+                                  </div>
+                                </td>
+                                <td style={{padding:"5px 8px",fontWeight:"500",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:nb.isPlanned?"var(--color-text-info)":"var(--color-text-primary)"}}>{nb.cellName}{nb.isPlanned?" ★":""}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nb.siteName||"—"}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-warning)"}}>{Number(nb.dist).toFixed(2)}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)"}}>{nb.azimuth}°</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)"}}>{Number(nb.bear).toFixed(0)}°</td>
+                                <td style={{padding:"5px 8px"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"3px"}}>
+                                    <div style={{flex:1,height:"5px",background:"var(--color-background-secondary)",borderRadius:"2px"}}>
+                                      <div style={{width:`${Math.round(nb.fwdS*100)}%`,height:"5px",background:"var(--color-background-warning)",borderRadius:"2px"}}/>
+                                    </div>
+                                    <span style={{fontSize:"10px",color:"var(--color-text-tertiary)",minWidth:"22px"}}>{Math.round(nb.fwdS*100)}%</span>
+                                  </div>
+                                </td>
+                                <td style={{padding:"5px 8px"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"3px"}}>
+                                    <div style={{flex:1,height:"5px",background:"var(--color-background-secondary)",borderRadius:"2px"}}>
+                                      <div style={{width:`${Math.round(nb.revS*100)}%`,height:"5px",background:"var(--color-background-info)",borderRadius:"2px"}}/>
+                                    </div>
+                                    <span style={{fontSize:"10px",color:"var(--color-text-tertiary)",minWidth:"22px"}}>{Math.round(nb.revS*100)}%</span>
+                                  </div>
+                                </td>
+                                <td style={{padding:"5px 8px",color:nb.bcch===sec.bcch?"var(--color-text-danger)":"var(--color-text-primary)",fontWeight:nb.bcch===sec.bcch?"500":"400"}}>{nb.bcch??"—"}</td>
+                                <td style={{padding:"5px 8px",color:"var(--color-text-secondary)"}}>{nb.ncc!=null&&nb.bcc!=null?`${nb.ncc}/${nb.bcc}`:"—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div style={{fontSize:"11px",color:"var(--color-text-tertiary)",marginTop:"6px"}}>★ = other planned site in this batch</div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<FreqPlanner />);
+  </script>
+</body>
+</html>

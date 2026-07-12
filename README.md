@@ -18,6 +18,7 @@
 
 | Tool | Description | Live |
 |------|-------------|------|
+| **2G Frequency Planner v2** ⭐ | Next-gen 2G planner: best-server footprint neighbour engine, C/I-based BCCH selection, Gauss-Seidel refinement + repair pass | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning-v2.html) |
 | **2G Frequency Planner** | Assigns BCCH, BSIC (NCC/BCC) and TCH frequencies for new GSM sites against an existing network | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning.html) |
 | **4G PCI / RSI / TAC Planner** | Assigns LTE PCI (with MOD3 enforcement), RSI and TAC for new eNB sites | [Open ↗](https://ankitnitk.github.io/new-site-planner/4G-PCI-RSI-TAC%20planning.html) |
 | **2G Frequency Optimizer** | Audits and optimises BCCH, BSIC and TCH plans for existing 2G sites — identifies conflicts and proposes a corrected plan | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-Frequency-Optimizer.html) |
@@ -571,6 +572,39 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 ---
 
 ## Changelog
+
+### 2026-07-12
+
+#### New tool: 2G Frequency Planner v2 (`2G-new-Site-planning-v2.html`)
+
+A separate next-generation build of the 2G planner — the original file is untouched. The headline change is that **neighbour selection no longer uses angular beam-overlap heuristics at all**; it computes actual best-server dominance footprints and derives neighbours from geometry that can be seen and verified on the map.
+
+**Best-server footprint neighbour engine (replaces the angular tier system):**
+- A local grid (160×160, ±1.2× search radius) is computed per planned site; every pixel is won by the cell with the strongest modelled signal — `RSL = −35·log₁₀(d) + G(θ)`, 3GPP-style pattern `G = −min(25, 12·(θ/beamwidth)²)` dB.
+- **T1** = cells whose dominance footprint shares a border with the sector's footprint (handover can only happen across such a border). **T2** = cells bordering a T1 footprint (second ring). The old bridge-exception / demote / upgrade / shadow stages are gone — the geometry answers all of those cases natively.
+- **Ranking** = Σ 1/d over shared-border pixels: long borders and close borders rank higher (handover-flux proxy).
+- **Co-location grouping:** co-sited cells with the same azimuth (dual-band 900+1800 twins) compete as ONE radiator, then every member cell inherits the group's tier and score — previously the tie-winner took the whole footprint and the twin vanished from the neighbour model entirely.
+- **Neighbour count rule:** ALL T1 are always kept (even above the max-neighbours setting, even beyond the search radius); T2 within the search radius fills the remaining slots by rank.
+- **Map:** a "Best-server footprints" toggle renders the *exact* grid the engine planned with (stored per site, not recomputed) — what you see is what was used.
+
+**C/I-based BCCH selection:** candidates are ranked by the worst-decile carrier-to-interference across the sector's own footprint pixels (strongest co-channel interferer, adjacent channel with 18 dB ACI protection) instead of an angular-overlap heuristic. The clean → t2_reuse → t1_reuse → forced tier structure and the BSIC-radius logic are unchanged.
+
+**Planning-flow improvements:**
+- Hardest-first site ordering in pass 1 (densest RF environment gets first pick of the clean spectrum); output restored to input order.
+- Passes 2+ use Gauss-Seidel (latest frequencies of already-replanned sites) instead of Jacobi.
+- Pass scoring gains a continuous interference-cost term, breaking ties between passes with equal degraded-sector counts.
+- Targeted repair pass at the end: only degraded sites are re-planned against everyone's final frequencies; changes kept only if the global score improves.
+- BSIC: among all free (NCC, BCC) slots at the achieved radius, the pair with the largest true repeat distance is chosen (never-used triplet wins outright).
+- TCH: ±1 of T1 neighbours' TCHs is soft-avoided first (new `~ T1 adj` badge when relaxed) — external adjacent-channel interference was previously ignored.
+- LAC/RAC/BSC vote now pools the footprint T1 neighbours; the **"1st tier radius" input is removed** (nothing consumes it any more).
+
+**Fixes & quality-of-life:**
+- ARFCN 0 no longer treated as missing (`||` → `??` and NaN-checked parsing).
+- `✗ impossible` badge renders red (was silently grey); `t1_reuse`/`t2_reuse` get proper warning badges.
+- Planning errors are surfaced in the UI instead of being swallowed.
+- Config and column mappings persist in localStorage; drag & drop file upload; dated export filename (`freq_plan_YYYY-MM-DD.xlsx`); `BCCH_Sep` export column now computed; steps allow forward navigation to existing results; production React builds; per-site distance/bearing caching (large-network speedup).
+
+---
 
 ### 2026-07-05
 
