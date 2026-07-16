@@ -833,7 +833,6 @@ function planOneSite(site, workingCells, cfg) {
       return matches.length === 0 ? null : Math.min(...matches.map(c => c.d));
     })();
 
-    const inSiteBCCHSet=new Set([...siteReg.bcch]);
 
     // Neighbour list rules:
     //  • ALL T1 are always kept — a footprint that borders this sector is a mandatory
@@ -864,7 +863,7 @@ function planOneSite(site, workingCells, cfg) {
       stats:{total:scored.length,tier1Count:effectiveTier1.length,tier2Count:effectiveTier2.length,tier3Count:0,
              demotedCount:0,upgradedCount:0,shadowedCount:0},
       // private fields consumed by round-robin — deleted before returning
-      _scored:scored, _inSiteBCCHSet:inSiteBCCHSet,
+      _scored:scored,
       _tch900Pool:tch900Pool, _tch1800Pool:tch1800Pool,
       _tier1Cells:effectiveTier1,
     };
@@ -880,22 +879,26 @@ function planOneSite(site, workingCells, cfg) {
   const acc900  = sectorResults.map(() => ({list:[], mode:'clean'}));
   const acc1800 = sectorResults.map(() => ({list:[], mode:'clean'}));
 
+  // COMPLETE in-site BCCH set — by now siteReg.bcch holds co-located existing cells' BCCHs
+  // AND every sector's chosen BCCH. The per-sector snapshots taken during BCCH planning miss
+  // siblings planned later, so with overlapping BCCH/TCH pools a sector's TCH could land
+  // exactly on a later sibling's BCCH. Passing one band-mixed set is safe: a 900 TCH pool
+  // cannot contain 1800 ARFCNs (and vice versa), so foreign-band entries filter to nothing,
+  // while an 1800-only sibling's BCCH is now protected in the 1800 plan too.
+  const allSiteBCCH = new Set(siteReg.bcch);
+
   for (let round=0; round<maxRounds; round++) {
     // Shuffle sector order each round so no single sector always gets first pick of the clean pool.
     const sectorOrder = shuffle(sectorResults.map((_,i) => i));
     for (const i of sectorOrder) {
       const s = sectorResults[i];
       if (acc900[i].list.length < s.tch900Count) {
-        const {list,mode} = planTCH(s._tch900Pool, s._scored, s._inSiteBCCHSet, siteReg.tch900, 1, acc900[i].list, s._tier1Cells);
+        const {list,mode} = planTCH(s._tch900Pool, s._scored, allSiteBCCH, siteReg.tch900, 1, acc900[i].list, s._tier1Cells);
         acc900[i].list.push(...list);
         acc900[i].mode = worseMode(acc900[i].mode, mode);
       }
       if (acc1800[i].list.length < s.tch1800Count) {
-        // For 1800-only cells (no 900 band) the BCCH is on 1800 — pass inSiteBCCHSet so the
-        // planner avoids ±1 of the BCCH.  Dual-band cells have BCCH on 900 (different ARFCNs),
-        // so an empty set is correct and avoids unnecessary filtering.
-        const inSiteBCCHSet1800 = s.has900 ? new Set() : s._inSiteBCCHSet;
-        const {list,mode} = planTCH(s._tch1800Pool, s._scored, inSiteBCCHSet1800, siteReg.tch1800, 1, acc1800[i].list, s._tier1Cells);
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, allSiteBCCH, siteReg.tch1800, 1, acc1800[i].list, s._tier1Cells);
         acc1800[i].list.push(...list);
         acc1800[i].mode = worseMode(acc1800[i].mode, mode);
       }
@@ -908,7 +911,7 @@ function planOneSite(site, workingCells, cfg) {
     s.tch900Mode  = acc900[i].list.length < s.tch900Count ? 'partial' : acc900[i].mode;
     s.tch1800List = acc1800[i].list.sort((a,b)=>a-b);
     s.tch1800Mode = acc1800[i].list.length < s.tch1800Count ? 'partial' : acc1800[i].mode;
-    delete s._scored; delete s._inSiteBCCHSet; delete s._tch900Pool; delete s._tch1800Pool; delete s._tier1Cells;
+    delete s._scored; delete s._tch900Pool; delete s._tch1800Pool; delete s._tier1Cells;
   });
 
   // Post-processing: if a sector ended up with 'clean' mode but one of its TCHs is

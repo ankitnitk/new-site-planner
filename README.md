@@ -573,6 +573,21 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 
 ## Changelog
 
+### 2026-07-16
+
+#### v2 fix: TCH could reuse a sibling sector's BCCH when the BCCH and TCH pools overlap
+
+The in-site BCCH exclusion set for TCH planning was snapshotted per sector **during** BCCH
+planning — so sector 1's snapshot only contained its own BCCH, missing siblings planned
+after it. With overlapping BCCH/TCH ARFCN pools, a sector's TCH could then land exactly on
+(or ±1 of) a later sibling's BCCH. TCH assignment (which runs after all BCCHs are chosen)
+now uses one complete site-level BCCH set. This also closes a second gap: dual-band cells
+previously passed an empty exclusion set for the 1800 TCH plan, leaving an 1800-only
+sibling's BCCH unprotected. Verified with BCCH pool = TCH pool = 76–101: zero exact or
+adjacent TCH↔in-site-BCCH collisions across all sites.
+
+---
+
 ### 2026-07-12
 
 #### New tool: 2G Frequency Planner v2 (`2G-new-Site-planning-v2.html`)
