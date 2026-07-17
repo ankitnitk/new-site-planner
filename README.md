@@ -18,7 +18,8 @@
 
 | Tool | Description | Live |
 |------|-------------|------|
-| **2G Frequency Planner v2** ⭐ | Next-gen 2G planner: best-server footprint neighbour engine, C/I-based BCCH selection, Gauss-Seidel refinement + repair pass | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning-v2.html) |
+| **2G Frequency Planner v3** ⭐ | v2 engine + optional BCF ID / BTS ID assignment (per-BSC decade blocks on the 10x+1 grid) | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning-v3.html) |
+| **2G Frequency Planner v2** | Best-server footprint neighbour engine, C/I-based BCCH selection, Gauss-Seidel refinement + repair pass | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning-v2.html) |
 | **2G Frequency Planner** | Assigns BCCH, BSIC (NCC/BCC) and TCH frequencies for new GSM sites against an existing network | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-new-Site-planning.html) |
 | **4G PCI / RSI / TAC Planner** | Assigns LTE PCI (with MOD3 enforcement), RSI and TAC for new eNB sites | [Open ↗](https://ankitnitk.github.io/new-site-planner/4G-PCI-RSI-TAC%20planning.html) |
 | **2G Frequency Optimizer** | Audits and optimises BCCH, BSIC and TCH plans for existing 2G sites — identifies conflicts and proposes a corrected plan | [Open ↗](https://ankitnitk.github.io/new-site-planner/2G-Frequency-Optimizer.html) |
@@ -572,6 +573,29 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 ---
 
 ## Changelog
+
+### 2026-07-17
+
+#### New tool: 2G Frequency Planner v3 (`2G-new-Site-planning-v3.html`) — BCF / BTS ID assignment
+
+v3 = the v2 engine plus optional **BCF ID / BTS ID selection** (v2 is untouched):
+
+- **Configure step:** "Assign BCF ID / BTS ID" checkbox (default ON) with a single
+  "Max BCF_ID/BTS_ID" input (default 4400, modifiable).
+- **BCF grid:** candidates are 10x+1 (1, 11, 21 … up to max−9; with max 4400 the last
+  proposable base is 4391). A block base N is proposed only when the **entire decade
+  N…N+9** is unused as a BCF ID *or* BTS ID by any cell (master or slave BTS) in the
+  site's BSC. Each planned site reserves its whole decade; multiple new sites in the same
+  BSC consume distinct blocks.
+- **BTS numbering within the block:** dual-band site → 900-band cells take N, N+1, N+2…
+  and 1800-band cells take N+4, N+5, N+6…; single-band site (only 900 or only 1800) →
+  cells take N, N+1, N+2… regardless of band.
+- **Inputs:** optional `BCF ID` / `BTS ID` columns auto-detected in the CMExport mapping;
+  the per-BSC used-ID sets are built from them. Site's BSC comes from the LAC/RAC/BSC vote.
+- **Outputs:** BCF badge on the site summary, "BTS 900/1800" column in the sector table,
+  and `BCF_ID` / `BTS_ID_900` / `BTS_ID_1800` columns in the XLSX Freq Plan sheet.
+
+---
 
 ### 2026-07-16
 
