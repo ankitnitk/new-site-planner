@@ -238,7 +238,9 @@ const detectParamCols = h => ({
   rac:      findCol(h,["rac","routingareacode","routing_area","routingarea"]),
   bsc:      findCol(h,["bsc","bscname","bsc_name","bscid","bsc_id","btscontroller"]),
   bcfId:    findCol(h,["bcfid","bcf_id","bcfnumber","bcf"]),
-  btsId:    findCol(h,["btsid","bts_id","btsnumber","segmentid"]),
+  // CMExport carries TWO BTS id columns — both count toward the used-ID set per BSC.
+  btsId:    findCol(h,["masterbtsid","master_bts","btsid","bts_id","btsnumber"]),
+  btsId2:   findCol(h,["slavebtsid","slave_bts","segmentid"]),
 });
 const detectNewSitesCols = h => ({
   siteName: findCol(h,["sitename","site_name","name","site"]),
@@ -1134,6 +1136,7 @@ async function planAllSites(sites,baseCells,cfg,onProgress) {
       const s = used.get(k);
       if (c.bcfId != null && !isNaN(Number(c.bcfId))) s.add(Number(c.bcfId));
       if (c.btsId != null && !isNaN(Number(c.btsId))) s.add(Number(c.btsId));
+      if (c.btsId2 != null && !isNaN(Number(c.btsId2))) s.add(Number(c.btsId2));
     });
     ordered.forEach(({sectorResults}) => {
       const k = keyOf(sectorResults[0]?.bsc);
@@ -1790,8 +1793,9 @@ function FreqPlanner() {
       const bcchV=parseInt(row[paramMap.bcch]); // parseInt||null would turn valid ARFCN 0 into null
       const bcfV=paramMap.bcfId?parseInt(row[paramMap.bcfId]):NaN;
       const btsV=paramMap.btsId?parseInt(row[paramMap.btsId]):NaN;
+      const bts2V=paramMap.btsId2?parseInt(row[paramMap.btsId2]):NaN;
       pLookup[name]={bcch:isNaN(bcchV)?null:bcchV,tchList,ncc:isNaN(ncc)?null:ncc,bcc:isNaN(bcc)?null:bcc,lac:isNaN(lac)?null:lac,rac:isNaN(rac)?null:rac,bsc,
-        bcfId:isNaN(bcfV)?null:bcfV,btsId:isNaN(btsV)?null:btsV};
+        bcfId:isNaN(bcfV)?null:bcfV,btsId:isNaN(btsV)?null:btsV,btsId2:isNaN(bts2V)?null:bts2V};
     });
     // Merge GIS + params
     const merged=gisData.rows.map(row=>{
@@ -1873,7 +1877,7 @@ function FreqPlanner() {
               {paramData&&<div style={{...CARD,marginTop:"-4px"}}>
                 <div style={{fontSize:"12px",fontWeight:"500",marginBottom:"6px"}}>Column mapping</div>
                 <ColMapper headers={paramData.headers} mapping={paramMap} onChange={setParamMap}
-                  fields={{cellName:"Cell name *",bcch:"BCCH *",tch:"TCH / MA list",ncc:"NCC",bcc:"BCC",bsic:"BSIC (alt)",lac:"LAC",rac:"RAC",bsc:"BSC",bcfId:"BCF ID",btsId:"BTS ID"}}/>
+                  fields={{cellName:"Cell name *",bcch:"BCCH *",tch:"TCH / MA list",ncc:"NCC",bcc:"BCC",bsic:"BSIC (alt)",lac:"LAC",rac:"RAC",bsc:"BSC",bcfId:"BCF ID",btsId:"Master BTS ID",btsId2:"Slave BTS ID"}}/>
               </div>}
             </div>
 

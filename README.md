@@ -590,8 +590,9 @@ v3 = the v2 engine plus optional **BCF ID / BTS ID selection** (v2 is untouched)
 - **BTS numbering within the block:** dual-band site → 900-band cells take N, N+1, N+2…
   and 1800-band cells take N+4, N+5, N+6…; single-band site (only 900 or only 1800) →
   cells take N, N+1, N+2… regardless of band.
-- **Inputs:** optional `BCF ID` / `BTS ID` columns auto-detected in the CMExport mapping;
-  the per-BSC used-ID sets are built from them. Site's BSC comes from the LAC/RAC/BSC vote.
+- **Inputs:** optional `BCF ID`, `Master BTS ID` and `Slave BTS ID` columns auto-detected
+  in the CMExport mapping; both BTS columns feed one per-BSC used-ID set together with the
+  BCF IDs. Site's BSC comes from the LAC/RAC/BSC vote.
 - **Outputs:** BCF badge on the site summary, "BTS 900/1800" column in the sector table,
   and `BCF_ID` / `BTS_ID_900` / `BTS_ID_1800` columns in the XLSX Freq Plan sheet.
 
