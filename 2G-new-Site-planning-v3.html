@@ -1067,19 +1067,22 @@ async function planAllSites(sites,baseCells,cfg,onProgress) {
     });
     const currVCells = {};
 
-    // Lock sites that have zero frequency coupling with the rest of the batch:
+    // Lock sites with zero coupling to the rest of the batch:
     //   1. Every sector already has a clean BCCH assignment, AND
-    //   2. No sector sees any other planned site as a neighbour (isPlanned flag).
-    // Such sites have no reason to change — their planning environment is identical
-    // to the previous pass, so re-running planOneSite would produce the exact same
-    // result.  We copy the previous result directly and skip the expensive call.
-    // Sites that ARE neighbours of other planned sites are still re-planned even if
-    // locked themselves — their frequencies may still influence others' assignments.
+    //   2. No OTHER planned site is within neighbour-influence range (3× search radius, the
+    //      adaptive-box reach) — a GEOGRAPHIC test, not the previous pass's neighbour list.
+    // The old test used the neighbour list, but in pass 1 a site planned before its co-planned
+    // neighbour never saw it, so a clean early site got locked and never picked that neighbour
+    // up — leaving an asymmetric plan (Y knows X, X doesn't know Y). The geographic test is
+    // symmetric: any two planned sites close enough to be neighbours are both re-planned until
+    // they see each other. Locked sites are copied without re-planning.
+    const influenceKm = (cfg.searchRadius || 10) * 3;
     const locked = new Set(
       lastResults
-        .filter(({sectorResults}) =>
+        .filter(({site, sectorResults}) =>
           sectorResults.every(r => r.bcchMode === 'clean') &&
-          !sectorResults.some(r => r.externalNeighbors.some(nb => nb.isPlanned))
+          !sites.some(s => s.name !== site.name &&
+            haversineKm(parseFloat(site.lat), parseFloat(site.lon), parseFloat(s.lat), parseFloat(s.lon)) <= influenceKm)
         )
         .map(({site}) => site.name)
     );
@@ -1137,6 +1140,33 @@ async function planAllSites(sites,baseCells,cfg,onProgress) {
         bestResults = candidate;
         finalVCells[entry.site.name] = sectorResults.map(r => toVCell(entry.site, r));
       }
+    }
+  }
+
+  // Final neighbour-list refresh (multi-site batches only). The returned FREQUENCIES come from
+  // the best-scoring pass, but that pass can be the sequential pass 1 in which an early site
+  // was planned before its co-planned neighbour existed — so its neighbour LIST misses that
+  // site. Revealing a neighbour only adds interference cost, so a blind pass is never beaten
+  // on score and keeps winning. Here we recompute every site's neighbour list against the
+  // complete final world (baseCells + all OTHER sites' final frequencies) and overwrite only
+  // the neighbour-related fields; frequencies stay exactly as planned. Safe against surfacing
+  // fake conflicts: in every pass each site already avoids all previously-placed sites, so no
+  // two planned sites share a BCCH for the refresh to expose.
+  if (bestResults.length > 1) {
+    const finalV = {};
+    bestResults.forEach(({site, sectorResults}) => { finalV[site.name] = sectorResults.map(r => toVCell(site, r)); });
+    for (const {site, sectorResults} of bestResults) {
+      await yield_();
+      const wc = [...baseCells];
+      bestResults.forEach(o => { if (o.site.name !== site.name) finalV[o.site.name].forEach(vc => wc.push(vc)); });
+      const fresh = planOneSite({lat:parseFloat(site.lat), lon:parseFloat(site.lon), sectors:site.sectors}, wc, cfg);
+      sectorResults.forEach((r, i) => {
+        if (!fresh[i]) return;
+        r.externalNeighbors = fresh[i].externalNeighbors;
+        r.stats = fresh[i].stats;
+        r.tier1BCCHs = fresh[i].tier1BCCHs;
+        r.allNbBCCHs = fresh[i].allNbBCCHs;
+      });
     }
   }
 

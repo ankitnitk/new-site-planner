@@ -574,6 +574,32 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 
 ## Changelog
 
+### 2026-07-20
+
+#### v3 fix: co-planned sites now appear symmetrically in each other's neighbour lists
+
+When two or more new sites in one batch were close enough to be neighbours, the
+relationship could come out one-sided — the later-planned site listed the earlier one, but
+not vice versa. Two causes, both fixed:
+
+- **Lock optimisation** froze a clean site in passes 2+ based on the previous pass's
+  neighbour list. A site planned early in the sequential pass 1 hadn't yet seen a co-planned
+  site placed after it, so it was locked and never picked it up. The lock test is now
+  **geographic** — a clean site is locked only when no other planned site is within
+  neighbour-influence range (3× search radius), which is symmetric.
+- **Best-pass selection** kept the frequencies of the highest-scoring pass, which can be the
+  blind sequential pass 1 (revealing a neighbour only adds interference cost, so a blind pass
+  is never beaten on score). Added a **final neighbour-list refresh**: after frequencies are
+  settled, every site's neighbour list is recomputed against the complete final world (all
+  other planned sites included), overwriting only the neighbour fields — frequencies stay as
+  planned. Safe against fake conflicts, since each site already avoids all previously-placed
+  sites in every pass, so no two planned sites share a BCCH.
+
+Verified: two new sites 3 km apart facing each other now each list the other (★); a
+co-planned site correctly appears in the sample-data neighbour lists.
+
+---
+
 ### 2026-07-19
 
 #### v3 fixes: background planning + far-out T1 neighbours
