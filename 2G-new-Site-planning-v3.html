@@ -552,12 +552,27 @@ function planOneSite(site, workingCells, cfg) {
   // rank higher. T2 = cells whose footprint borders a T1 footprint. Cells co-located with
   // this site (<50 m) are intra-site and excluded as competitors.
   const GRID_CAND_MAX=400, CI_SAMPLES=600;
-  const gridR=Math.max(2,(cfg.searchRadius||10)*1.2);
   const kx=111.320*Math.cos(lat*Math.PI/180), ky=110.574;
-  const extCand=workingCells
-    .map((c,ci)=>(!geo[ci]||geo[ci].dist<0.05)?null:{c,ci,x:(c.lon-lon)*kx,y:(c.lat-lat)*ky})
-    .filter(e=>e&&Math.abs(e.x)<=gridR*1.4&&Math.abs(e.y)<=gridR*1.4)
-    .sort((a,b)=>(a.x*a.x+a.y*a.y)-(b.x*b.x+b.y*b.y))
+  const baseR=Math.max(2,(cfg.searchRadius||10)*1.2);
+  const MAX_BOX=Math.max(baseR,(cfg.searchRadius||10)*3);
+  // All in-range candidate cells (distance from the shared geo cache), nearest first.
+  const allCand=workingCells
+    .map((c,ci)=>(!geo[ci]||geo[ci].dist<0.05)?null:{c,ci,x:(c.lon-lon)*kx,y:(c.lat-lat)*ky,d:geo[ci].dist})
+    .filter(e=>e&&e.d<=MAX_BOX*1.45)
+    .sort((a,b)=>a.d-b.d);
+  // Adaptive grid extent: a sector's footprint is bounded by the nearest competitor in each
+  // direction, so if the box is smaller than that the footprint gets clipped at the box edge
+  // and a genuine (possibly beyond-search-radius) bordering neighbour out there is never
+  // captured as T1. Take the nearest cell in each 30° bin; the box must reach the farthest of
+  // those "first-ring" cells (×1.3 margin) so every real footprint boundary sits inside it.
+  // Floored at 1.2× search radius, capped at 3× so compute/pixel size stay bounded. Directions
+  // with no cell at all stay open (clipped harmlessly against empty grid background).
+  const binNearest=new Array(12).fill(Infinity);
+  allCand.forEach(e=>{ const b=Math.floor(((Math.atan2(e.x,e.y)*180/Math.PI+360)%360)/30)%12; if(e.d<binNearest[b]) binNearest[b]=e.d; });
+  const ringMax=Math.max(0,...binNearest.filter(d=>isFinite(d)));
+  const gridR=Math.min(MAX_BOX,Math.max(baseR,ringMax*1.3));
+  const extCand=allCand
+    .filter(e=>Math.abs(e.x)<=gridR*1.4&&Math.abs(e.y)<=gridR*1.4)
     .slice(0,GRID_CAND_MAX);
   // Group co-located, same-azimuth cells (dual-band twins: 900 + 1800 on the same antenna)
   // into ONE radiator for the footprint competition. Co-sited same-azimuth cells produce
@@ -956,7 +971,16 @@ function planOneSite(site, workingCells, cfg) {
 async function planAllSites(sites,baseCells,cfg,onProgress) {
   const maxPasses = Math.max(1, cfg.maxPasses ?? 3);
   // Yield to the browser so React can flush any pending state updates (progress bar redraws).
-  const yield_ = () => new Promise(r => setTimeout(r, 0));
+  // MessageChannel is used instead of setTimeout(0): background/inactive tabs clamp timer
+  // callbacks to a ~1 s minimum (which made planning appear to pause when the window lost
+  // focus), whereas MessageChannel messages are delivered without that throttling — so the
+  // run continues at full speed in the background.
+  const yield_ = (() => {
+    const ch = new MessageChannel();
+    let resolve = null;
+    ch.port1.onmessage = () => { const r = resolve; resolve = null; if (r) r(); };
+    return () => new Promise(res => { resolve = res; ch.port2.postMessage(0); });
+  })();
 
   const toVCell = (site, r) => ({
     cellName:`${site.name}_S${r.idx+1}`, siteName:site.name,

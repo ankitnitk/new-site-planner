@@ -574,6 +574,26 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 
 ## Changelog
 
+### 2026-07-19
+
+#### v3 fixes: background planning + far-out T1 neighbours
+
+- **Planning no longer pauses when the tab loses focus.** The inter-site yield used
+  `setTimeout(0)`, which background/inactive tabs clamp to a ~1 s minimum — so switching
+  windows mid-run appeared to freeze the calculation. Replaced with a `MessageChannel`
+  yield, which is delivered without background throttling; the run now continues at full
+  speed in the background.
+- **T1 neighbours beyond the footprint box are no longer lost.** The best-server grid was a
+  fixed ±1.2× search radius box; in sparse/rural areas a sector's footprint extends past it,
+  so a genuine bordering cell farther out (correctly a T1 even beyond the search radius) got
+  clipped at the box edge and never generated. The box is now adaptive — sized from the
+  nearest competitor in each 30° bin (×1.3) so it always contains the real footprint
+  boundary, floored at 1.2× search radius and capped at 3×. Verified: a neighbour at 18 km
+  (search radius 10 km) is now returned as T1; dense networks are unchanged (box stays at the
+  1.2× floor).
+
+---
+
 ### 2026-07-17
 
 #### New tool: 2G Frequency Planner v3 (`2G-new-Site-planning-v3.html`) — BCF / BTS ID assignment
