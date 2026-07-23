@@ -574,6 +574,31 @@ Blue frozen headers; changed values are highlighted in the results table in the 
 
 ## Changelog
 
+### 2026-07-21
+
+#### v3: tier-aware TCH co-channel avoidance (fewer co-site adjacencies)
+
+TCH planning previously avoided co-channel with **every** cell inside the search radius,
+tier-blind — so in a dense network the neighbour-clean channels that remained were often
+adjacent to a sibling sector, producing co-site adjacency (ACI on the same mast) even at low
+TRX counts. Now the co-channel set is split by footprint tier, mirroring what BCCH selection
+already does:
+
+- **Strong** = T1/T2 footprint neighbours. Co-channel with them is real CCI in the handover
+  overlap (GSM needs C/I ≥ ~9 dB) → avoided hard, reused only as a late resort.
+- **Weak** = any other cell in the search radius that is *not* a footprint neighbour. Geometry
+  already gives a healthy C/I there, so co-channel reuse is mild and is now **preferred over
+  creating a co-site adjacency** (which only needs C/A ≥ ~−9 dB but still puts an adjacent
+  carrier on the same site).
+
+New cascade priority (best → worst): clean → T1-adjacent → **far (weak) co-channel** →
+co-site adjacency → far+adjacent → strong (T1/T2) co-channel → strong+adjacent → exact
+intra-site reuse → last resort. Two new result badges: `✓ far reuse` and `~ far+adj`. A
+`far_reuse` channel is never co-channel with a T1/T2 neighbour by construction. Net effect:
+co-site adjacency now appears only when the cleaner far-reuse options are genuinely exhausted.
+
+---
+
 ### 2026-07-20
 
 #### v3 fix: co-planned sites now appear symmetrically in each other's neighbour lists

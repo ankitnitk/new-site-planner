@@ -352,10 +352,12 @@ function spreadSelect(pool, count, minSep=1) {
 }
 
 // ── TCH planner (shared for 900 and 1800) ────────────────────────────────────
-function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTCH, tier1Cells) {
+function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTCH, tier1Cells, strongNbCells) {
   // siteRegTCH    = TCHs already assigned to OTHER sectors of this site
   // sameSectorTCH = TCHs already assigned to THIS sector in earlier round-robin rounds
   // tier1Cells    = effective T1 neighbours — their TCH ±1 is soft-avoided (first pass only)
+  // strongNbCells = effective T1+T2 footprint neighbours — co-channel with these is avoided
+  //                 hard; co-channel with any other in-radius cell is treated as "weak" reuse
   sameSectorTCH = sameSectorTCH || [];
   if (!count || !tchPool.length) return {list:[], mode:"n/a"};
   // Intra-sector ACI hard constraint: same-sector previously assigned TCHs and their
@@ -374,75 +376,66 @@ function planTCH(tchPool, scored, inSiteBCCHSet, siteRegTCH, count, sameSectorTC
   const inSiteBCCHAdj = new Set(inSiteBCCHSet);
   inSiteBCCHSet.forEach(b => { inSiteBCCHAdj.add(b-1); inSiteBCCHAdj.add(b+1); });
 
-  // Neighbour TCHs from external cells (same band)
-  const nbTCH = new Set();
-  scored.forEach(c=>(c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n))nbTCH.add(n);}));
+  // ── Neighbour TCHs split by footprint tier (co-channel severity depends on overlap) ──────
+  // STRONG = T1/T2 footprint neighbours: co-channel with them is real CCI in the handover
+  // overlap (GSM needs C/I ≥ ~9 dB), so avoid it hard and reuse only as a late resort.
+  // WEAK = any other cell inside the search radius that is NOT a footprint neighbour: geometry
+  // already gives a healthy C/I there, so co-channel reuse is mild — and is PREFERRED over
+  // creating a co-site adjacency (ACI between sibling sectors, which needs only C/A ≥ ~−9 dB
+  // but does put an adjacent carrier on the same mast). A channel used by any strong neighbour
+  // counts as strong even if a weak cell also uses it.
+  const strongNames = new Set((strongNbCells||[]).map(c=>c.cellName));
+  const strongNbTCH = new Set();
+  (strongNbCells||[]).forEach(c=>(c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n))strongNbTCH.add(n);}));
+  const weakNbTCH = new Set();
+  scored.forEach(c=>{ if(strongNames.has(c.cellName))return; (c.tchList||[]).forEach(t=>{const n=Number(t);if(!isNaN(n)&&tchPoolSet.has(n)&&!strongNbTCH.has(n))weakNbTCH.add(n);}); });
 
   // ±1 of T1 neighbours' TCHs — external adjacent-channel interference toward the strongest
-  // neighbours (was ignored entirely; only intra-site/intra-sector ACI was protected).
+  // neighbours (soft; dropped after the first pass).
   const t1Adj = new Set();
   (tier1Cells||[]).forEach(c=>(c.tchList||[]).forEach(t=>{
     const n=Number(t); if(!isNaN(n)){ t1Adj.add(n-1); t1Adj.add(n+1); }
   }));
 
-  // Hard forbidden: neighbour TCHs + in-site BCCHs (±1) + other-sector TCHs (no repetition)
+  // Same-site references: exact sibling-sector TCHs (never repeat) and their ±1 (co-site ACI).
   const otherSectorTCH = new Set(siteRegTCH);
-  const hardForbid = new Set([...nbTCH, ...inSiteBCCHAdj, ...otherSectorTCH]);
-
-  // Soft forbidden: adjacent to OTHER sectors' TCHs (ok as last resort across sectors)
   const otherSectorAdj = new Set();
   siteRegTCH.forEach(t=>{ otherSectorAdj.add(t-1); otherSectorAdj.add(t+1); });
 
-  // Build candidate pools
-  const poolA = []; // ideal: clean from nb conflicts AND not adj to other-sector TCHs
-  const poolB = []; // relaxed: clean from nb conflicts, may be adj to other-sector TCHs
-  for (const a of tchPool) {
-    if (hardForbid.has(a)) continue;
-    if (!otherSectorAdj.has(a)) poolA.push(a);
-    poolB.push(a);
-  }
+  // notHard: in-site BCCH ±1 and exact sibling reuse are blocked in every pool but the last two.
+  const notHard = a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a);
+  const P = pred => tchPool.filter(pred);
 
+  // Cascade, best → worst. Each pool EXCLUDES its bad option so it is only used when a cleaner
+  // pool cannot fill the requirement; the first pool that fully fills wins. Priority by RF
+  // severity: clean → T1-adjacent → far(weak) co-channel → co-site adjacency → far+adj →
+  // strong(T1/T2) co-channel → strong+adj → exact intra-site reuse → last resort.
+  // (weak co-channel ranks ABOVE co-site adjacency — this is the fix for getting co-site
+  //  adjacency even at low TRX: previously ALL in-radius cells were avoided co-channel, so the
+  //  only clean channels left were adjacent to a sibling; now far non-neighbours can be reused
+  //  co-channel first, which usually removes the co-site adjacency entirely.)
+  const steps = [
+    [P(a => notHard(a) && !strongNbTCH.has(a) && !weakNbTCH.has(a) && !otherSectorAdj.has(a) && !t1Adj.has(a)), "clean"],
+    [P(a => notHard(a) && !strongNbTCH.has(a) && !weakNbTCH.has(a) && !otherSectorAdj.has(a)),                  "t1_adj"],
+    [P(a => notHard(a) && !strongNbTCH.has(a) &&                       !otherSectorAdj.has(a)),                  "far_reuse"],
+    [P(a => notHard(a) && !strongNbTCH.has(a) && !weakNbTCH.has(a)),                                             "site_adj"],
+    [P(a => notHard(a) && !strongNbTCH.has(a)),                                                                  "far_reuse_adj"],
+    [P(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a) && !otherSectorAdj.has(a)),                          "nb_reuse"],
+    [P(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a)),                                                    "nb_reuse_adj"],
+    [P(a => !inSiteBCCHAdj.has(a) && !otherSectorAdj.has(a)),                                                    "site_reuse"],
+  ];
   // intra-sector adjacency (minSep=2) is NEVER relaxed — adjacent freqs in same cell cause ACI
-  let list=[], mode="clean";
-  // poolC: nb conflict OK, but still avoids intra-site exact reuse AND cross-sector adjacency
-  const poolC = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a) && !otherSectorAdj.has(a));
-  // poolD: nb conflict OK, cross-sector adj OK, no exact intra-site TCH reuse
-  const poolD = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorTCH.has(a));
-  // poolE: exact intra-site TCH reuse allowed, but still avoids cross-sector adjacency
-  const poolE = tchPool.filter(a => !inSiteBCCHAdj.has(a) && !otherSectorAdj.has(a));
-  // poolF: last resort — exact reuse AND cross-sector adj both allowed; only BCCH adjacency still blocked
-  const poolF = tchPool.filter(a => !inSiteBCCHAdj.has(a));
-
-  // First choice: poolA additionally cleared of ±1 of any T1 neighbour's TCH.
-  const poolA1 = t1Adj.size ? poolA.filter(a => !t1Adj.has(a)) : poolA;
-  list = optimalTCHSelect(poolA1, count, 2);
-  if (list.length >= count) { mode="clean"; }
-  else {
-    if (poolA1 !== poolA) {
-      const listA = optimalTCHSelect(poolA, count, 2);
-      if (listA.length >= list.length) { list=listA; mode=listA.length>=count?"t1_adj":"partial"; }
-    }
-    if (list.length < count) {
-      const listB = optimalTCHSelect(poolB, count, 2);
-      if (listB.length >= list.length) { list=listB; mode=listB.length>=count?"site_adj":"partial"; }
-    }
-    if (list.length < count) {
-      const listC = optimalTCHSelect(poolC, count, 2);
-      if (listC.length > list.length) { list=listC; mode=listC.length>=count?"nb_reuse":"partial"; }
-    }
-    if (list.length < count) {
-      const listD = optimalTCHSelect(poolD, count, 2);
-      if (listD.length > list.length) { list=listD; mode=listD.length>=count?"nb_reuse_adj":"partial"; }
-    }
-    if (list.length < count) {
-      const listE = optimalTCHSelect(poolE, count, 2);
-      if (listE.length > list.length) { list=listE; mode=listE.length>=count?"site_reuse":"partial"; }
-    }
-    if (list.length < count) {
-      const listF = spreadSelect(poolF, count, 2);
-      if (listF.length > list.length) { list=listF; mode="reuse"; }
-    }
+  let list=[], mode="n/a";
+  for (const [pool, m] of steps) {
+    if (list.length >= count) break;
+    const pick = optimalTCHSelect(pool, count, 2);
+    if (pick.length > list.length) { list = pick; mode = m; }
   }
+  if (list.length < count) {
+    const pick = spreadSelect(tchPool.filter(a => !inSiteBCCHAdj.has(a)), count, 2);
+    if (pick.length > list.length) { list = pick; mode = "reuse"; }
+  }
+  if (list.length < count) mode = "partial";
 
   list.forEach(t=>siteRegTCH.push(t));
   return {list, mode};
@@ -885,13 +878,14 @@ function planOneSite(site, workingCells, cfg) {
       _scored:scored,
       _tch900Pool:tch900Pool, _tch1800Pool:tch1800Pool,
       _tier1Cells:effectiveTier1,
+      _strongNbCells:[...effectiveTier1,...effectiveTier2],
     };
   });
 
   // ── Round-robin TCH assignment ────────────────────────────────────────────
   // Assign 1 TCH per sector per band per round so that each sector's Nth pick
   // is informed by every other sector's (N-1) already-committed TCHs.
-  const MODE_RANK = {clean:0,'n/a':0,t1_adj:1,partial:2,site_adj:3,nb_reuse:4,nb_reuse_adj:5,site_reuse:6,reuse:7,impossible:8};
+  const MODE_RANK = {clean:0,'n/a':0,t1_adj:1,far_reuse:2,partial:2,site_adj:3,far_reuse_adj:4,nb_reuse:5,nb_reuse_adj:6,site_reuse:7,reuse:8,impossible:9};
   const worseMode = (a,b) => (MODE_RANK[a]??1) >= (MODE_RANK[b]??1) ? a : b;
 
   const maxRounds = sectorResults.reduce((m,s) => Math.max(m, s.tch900Count, s.tch1800Count), 0);
@@ -912,12 +906,12 @@ function planOneSite(site, workingCells, cfg) {
     for (const i of sectorOrder) {
       const s = sectorResults[i];
       if (acc900[i].list.length < s.tch900Count) {
-        const {list,mode} = planTCH(s._tch900Pool, s._scored, allSiteBCCH, siteReg.tch900, 1, acc900[i].list, s._tier1Cells);
+        const {list,mode} = planTCH(s._tch900Pool, s._scored, allSiteBCCH, siteReg.tch900, 1, acc900[i].list, s._tier1Cells, s._strongNbCells);
         acc900[i].list.push(...list);
         acc900[i].mode = worseMode(acc900[i].mode, mode);
       }
       if (acc1800[i].list.length < s.tch1800Count) {
-        const {list,mode} = planTCH(s._tch1800Pool, s._scored, allSiteBCCH, siteReg.tch1800, 1, acc1800[i].list, s._tier1Cells);
+        const {list,mode} = planTCH(s._tch1800Pool, s._scored, allSiteBCCH, siteReg.tch1800, 1, acc1800[i].list, s._tier1Cells, s._strongNbCells);
         acc1800[i].list.push(...list);
         acc1800[i].mode = worseMode(acc1800[i].mode, mode);
       }
@@ -930,7 +924,7 @@ function planOneSite(site, workingCells, cfg) {
     s.tch900Mode  = acc900[i].list.length < s.tch900Count ? 'partial' : acc900[i].mode;
     s.tch1800List = acc1800[i].list.sort((a,b)=>a-b);
     s.tch1800Mode = acc1800[i].list.length < s.tch1800Count ? 'partial' : acc1800[i].mode;
-    delete s._scored; delete s._tch900Pool; delete s._tch1800Pool; delete s._tier1Cells;
+    delete s._scored; delete s._tch900Pool; delete s._tch1800Pool; delete s._tier1Cells; delete s._strongNbCells;
   });
 
   // Post-processing: if a sector ended up with 'clean' mode but one of its TCHs is
@@ -1426,7 +1420,7 @@ function Pill({n,type}) {
 }
 
 function ModeBadge({mode}) {
-  const cfg={clean:{l:"✓ clean",t:"info"},bsic_only:{l:"⚠ BSIC guard",t:"warn"},forced:{l:"⚠ forced",t:"warn"},t1_adj:{l:"~ T1 adj",t:"warn"},site_adj:{l:"~ x-sector adj",t:"warn"},t2_reuse:{l:"⚠ T2 reuse",t:"warn"},t1_reuse:{l:"⚠ T1 reuse",t:"warn"},nb_reuse:{l:"⚠ nb reuse",t:"warn"},nb_reuse_adj:{l:"⚠ nb+adj",t:"warn"},site_reuse:{l:"⚠ site reuse",t:"warn"},intra_adj:{l:"⚠ intra-adj",t:"warn"},reuse:{l:"⚠ reuse",t:"warn"},impossible:{l:"✗ impossible",t:"error"},"n/a":{l:"—",t:"default"}};
+  const cfg={clean:{l:"✓ clean",t:"info"},bsic_only:{l:"⚠ BSIC guard",t:"warn"},forced:{l:"⚠ forced",t:"warn"},t1_adj:{l:"~ T1 adj",t:"warn"},far_reuse:{l:"✓ far reuse",t:"info"},far_reuse_adj:{l:"~ far+adj",t:"warn"},site_adj:{l:"~ x-sector adj",t:"warn"},t2_reuse:{l:"⚠ T2 reuse",t:"warn"},t1_reuse:{l:"⚠ T1 reuse",t:"warn"},nb_reuse:{l:"⚠ nb reuse",t:"warn"},nb_reuse_adj:{l:"⚠ nb+adj",t:"warn"},site_reuse:{l:"⚠ site reuse",t:"warn"},intra_adj:{l:"⚠ intra-adj",t:"warn"},reuse:{l:"⚠ reuse",t:"warn"},impossible:{l:"✗ impossible",t:"error"},"n/a":{l:"—",t:"default"}};
   const c=cfg[mode]||{l:mode,t:"default"};
   const m={info:{bg:"var(--color-background-info)",color:"var(--color-text-info)",b:"var(--color-border-info)"},
     warn:{bg:"var(--color-background-warning)",color:"var(--color-text-warning)",b:"var(--color-border-warning)"},
